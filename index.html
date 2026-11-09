@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16181B">
+<meta name="color-scheme" content="light">
+<title>Ống khí động: khảo sát lực cản và lực nâng</title>
+<script>
+/* boot.js — paste as the FIRST inline <script> in <head>, before any other script.
+ * Hardens a web app or game for phones, tablets, desktops and in-app browsers
+ * (Zalo, Facebook, Messenger, Instagram, TikTok, Line, WeChat).
+ *
+ * What it does
+ *  1. Stubs the JS bridges that in-app browsers call (zaloJSV2 ...) so their injected code stops throwing.
+ *  2. Classifies errors: foreign noise (in-app bridges, extensions, benign browser warnings) is ignored;
+ *     only real breakage of OUR code shows the fatal overlay.
+ *  3. Real breakage = an error inside Boot.guard()-wrapped code (init, frame loop, handlers),
+ *     or the main loop stalling while the page is visible (watchdog).
+ *  4. Sets CSS vars --vh100 (true visible height), --sat/--sar/--sab/--sal (safe areas) and
+ *     html classes: is-touch, is-inapp, is-ios, is-android, is-portrait|is-landscape, is-short.
+ *  5. Safe storage (never throws), visibility pause hooks, WebGL context-loss helper.
+ *
+ * API (window.Boot)
+ *  Boot.guard(fn, label)      -> wrapped fn; errors inside are fatal (overlay with Reload/Copy/Close)
+ *  Boot.loop(fn)              -> requestAnimationFrame loop with dt (seconds, clamped), guarded + watchdog
+ *  Boot.onPause(fn)/onResume(fn)  page hidden / visible again
+ *  Boot.store.get(k, def) / Boot.store.set(k, v)   JSON localStorage that never throws
+ *  Boot.watchCanvas(canvas)   handle webglcontextlost (shows reload overlay)
+ *  Boot.env                   {touch, inApp, inAppName, ios, android, mobile}
+ *  Boot.log                   recent non-fatal errors (for "Copy" diagnostics)
+ *  Boot.texts                 overlay strings (Vietnamese by default; override before errors occur)
+ */
+(function () {
+  'use strict';
+  var w = window, d = document, root = d.documentElement;
+  if (w.Boot) return;
+
+  /* 1. In-app bridge stubs. Zalo calls zaloJSV2.zalo_h5_event_handler(...) on pages that never loaded its SDK. */
+  var noop = function () {};
+  try {
+    if (!w.zaloJSV2) w.zaloJSV2 = { zalo_h5_event_handler: noop, getCookieFallback: function () { return ''; } };
+  } catch (e) {}
+
+  /* 2. Environment */
+  var ua = navigator.userAgent || '';
+  var inAppMatch = ua.match(/Zalo|FBAN|FBAV|FB_IAB|Messenger|Instagram|Line\/|TikTok|musical_ly|BytedanceWebview|MicroMessenger|Twitter|Snapchat/i);
+  var env = {
+    ios: /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+    android: /Android/i.test(ua),
+    inApp: !!inAppMatch,
+    inAppName: inAppMatch ? inAppMatch[0] : '',
+    touch: false,
+    mobile: false
+  };
+  function mq(q) { try { return w.matchMedia(q).matches; } catch (e) { return false; } }
+  env.touch = mq('(pointer: coarse)') || (navigator.maxTouchPoints || 0) > 0;
+  env.mobile = env.ios || env.android || (env.touch && Math.min(screen.width, screen.height) < 820);
+
+  function cls(name, on) { root.classList[on ? 'add' : 'remove'](name); }
+  cls('is-touch', env.touch); cls('is-inapp', env.inApp); cls('is-ios', env.ios); cls('is-android', env.android);
+
+  /* 4. Viewport vars. visualViewport gives the real visible area in iOS/in-app webviews whose toolbars move. */
+  function measure() {
+    var vv = w.visualViewport;
+    var h = vv ? vv.height : w.innerHeight;
+    var wd = vv ? vv.width : w.innerWidth;
+    root.style.setProperty('--vh100', h + 'px');
+    root.style.setProperty('--vw100', wd + 'px');
+    var portrait = h >= wd;
+    cls('is-portrait', portrait); cls('is-landscape', !portrait);
+    cls('is-short', h < 520);
+  }
+  measure();
+  w.addEventListener('resize', measure);
+  w.addEventListener('orientationchange', function () { setTimeout(measure, 250); });
+  if (w.visualViewport) w.visualViewport.addEventListener('resize', measure);
+
+  /* Safe storage */
+  var store = {
+    get: function (k, def) { try { var v = w.localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } },
+    set: function (k, v) { try { w.localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  };
+
+  /* 2-3. Error classification */
+  var FOREIGN = [
+    /zaloJSV2|ZaloJavaScriptInterface|zalo_h5|ZaloSDK/i,
+    /WeixinJSBridge|FB_IAB|fbq is not defined|__gCrWeb|webkit\.messageHandlers|_AutofillCallbackHandler|instantSearchSDKJSBridge/i,
+    /ResizeObserver loop/i,
+    /^Script error\.?$/i,
+    /(chrome|moz|safari|safari-web)-extension:\/\//i,
+    /Can't find variable: (gmo|bytedance|ttq|webkit)/i
+  ];
+  function isForeign(msg, src, stack) {
+    var s = String(msg || '') + ' ' + String(src || '') + ' ' + String(stack || '');
+    for (var i = 0; i < FOREIGN.length; i++) if (FOREIGN[i].test(s)) return true;
+    return false;
+  }
+  var log = [];
+  function remember(kind, msg, src, stack) {
+    log.push({ t: new Date().toISOString(), kind: kind, msg: String(msg), src: src || '', stack: String(stack || '').slice(0, 800) });
+    if (log.length > 20) log.shift();
+  }
+  w.addEventListener('error', function (e) {
+    if (e && e.target && e.target !== w && e.target.tagName) { // resource failed to load
+      remember('resource', (e.target.src || e.target.href || e.target.tagName) + ' failed to load');
+      return;
+    }
+    var msg = e && e.message, src = e && e.filename, stack = e && e.error && e.error.stack;
+    if (isForeign(msg, src, stack)) return;
+    remember('error', msg, src + ':' + (e && e.lineno) + ':' + (e && e.colno), stack);
+  }, true);
+  w.addEventListener('unhandledrejection', function (e) {
+    var r = e && e.reason;
+    var msg = r && r.message ? r.message : String(r);
+    if (isForeign(msg, '', r && r.stack)) return;
+    remember('promise', msg, '', r && r.stack);
+  });
+
+  /* Fatal overlay (built lazily, inline styles so it works before any CSS loads) */
+  var texts = {
+    title: 'Ứng dụng gặp lỗi',
+    body: 'Bấm "Tải lại". Nếu lỗi lặp lại, bấm "Sao chép" và gửi nội dung cho người phát triển.',
+    reload: 'Tải lại', copy: 'Sao chép', copied: 'Đã chép', close: 'Đóng',
+    stalled: 'Ứng dụng ngừng phản hồi',
+    gpu: 'Mất kết nối đồ họa (WebGL). Bấm "Tải lại".'
+  };
+  var overlayShown = false;
+  function diagnostics(err) {
+    return [ua, location.href, '', '## ' + (err && err.message ? err.message : String(err)),
+      String(err && err.stack || ''), '', '## recent', JSON.stringify(log.slice(-5), null, 1)].join('\n');
+  }
+  function fatal(err, title) {
+    if (overlayShown) return;
+    overlayShown = true;
+    var text = diagnostics(err);
+    try { console.error('[fatal]', err); } catch (e) {}
+    function build() {
+      var o = d.createElement('div');
+      o.setAttribute('role', 'alertdialog');
+      o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;' +
+        'padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));background:rgba(8,10,14,.72);' +
+        'font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e8eaee';
+      var card = d.createElement('div');
+      card.style.cssText = 'width:min(520px,100%);max-height:100%;overflow:auto;background:#161a21;border:1px solid #2c3340;border-radius:14px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.45)';
+      var h = d.createElement('div'); h.textContent = title || texts.title; h.style.cssText = 'font-weight:650;font-size:17px;margin-bottom:6px';
+      var p = d.createElement('div'); p.textContent = texts.body; p.style.cssText = 'opacity:.8;margin-bottom:12px';
+      var pre = d.createElement('pre'); pre.textContent = text;
+      pre.style.cssText = 'white-space:pre-wrap;word-break:break-word;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;background:#0d1015;padding:10px;border-radius:8px;max-height:40vh;overflow:auto;margin:0 0 12px';
+      var row = d.createElement('div'); row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
+      function btn(label, primary, fn) {
+        var b = d.createElement('button'); b.type = 'button'; b.textContent = label;
+        b.style.cssText = 'flex:1 1 auto;min-height:44px;padding:0 16px;border-radius:10px;font:600 15px system-ui,sans-serif;cursor:pointer;' +
+          (primary ? 'background:#e8eaee;color:#111;border:0' : 'background:transparent;color:#e8eaee;border:1px solid #3a4250');
+        b.addEventListener('click', fn); row.appendChild(b); return b;
+      }
+      btn(texts.reload, true, function () { location.reload(); });
+      var cb = btn(texts.copy, false, function () {
+        var done = function () { cb.textContent = texts.copied; };
+        try { navigator.clipboard.writeText(text).then(done, function () { selectPre(); }); } catch (e) { selectPre(); }
+      });
+      function selectPre() { var r = d.createRange(); r.selectNodeContents(pre); var s = w.getSelection(); s.removeAllRanges(); s.addRange(r); }
+      btn(texts.close, false, function () { o.remove(); overlayShown = false; });
+      card.appendChild(h); card.appendChild(p); card.appendChild(pre); card.appendChild(row); o.appendChild(card);
+      d.body.appendChild(o);
+    }
+    if (d.body) build(); else d.addEventListener('DOMContentLoaded', build);
+  }
+
+  function guard(fn, label) {
+    return function () {
+      try { return fn.apply(this, arguments); }
+      catch (err) {
+        if (isForeign(err && err.message, '', err && err.stack)) return;
+        if (label && err && err.message) err.message = '[' + label + '] ' + err.message;
+        fatal(err);
+      }
+    };
+  }
+
+  /* Guarded rAF loop with clamped dt and a stall watchdog */
+  var lastTick = 0, paused = false, pauseFns = [], resumeFns = [];
+  function loop(fn) {
+    var g = guard(fn, 'frame'), prev = 0;
+    function frame(now) {
+      var dt = prev ? Math.min((now - prev) / 1000, 0.1) : 1 / 60;
+      prev = now; lastTick = performance.now();
+      if (!paused) g(dt, now);
+      w.requestAnimationFrame(frame);
+    }
+    lastTick = performance.now();
+    w.requestAnimationFrame(frame);
+  }
+  setInterval(function () {
+    if (!lastTick || paused || d.hidden) return;
+    if (performance.now() - lastTick > 4000) fatal(new Error('main loop stalled > 4s'), texts.stalled);
+  }, 1000);
+  d.addEventListener('visibilitychange', function () {
+    if (d.hidden) { paused = true; pauseFns.forEach(function (f) { try { f(); } catch (e) {} }); }
+    else { paused = false; lastTick = performance.now(); resumeFns.forEach(function (f) { try { f(); } catch (e) {} }); }
+  });
+
+  function watchCanvas(canvas) {
+    canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); fatal(new Error('webglcontextlost'), texts.gpu); }, false);
+  }
+
+  w.Boot = {
+    env: env, store: store, log: log, texts: texts,
+    guard: guard, loop: loop, fatal: fatal, isForeign: isForeign, watchCanvas: watchCanvas, measure: measure,
+    onPause: function (f) { pauseFns.push(f); }, onResume: function (f) { resumeFns.push(f); },
+    get paused() { return paused; }
+  };
+})();
+
+</script>
+<link rel="stylesheet" href="src/styles.css?v=1">
+</head>
+<body>
+<div id="app"></div>
+<noscript>Trang này cần bật JavaScript để chạy ống khí động ảo.</noscript>
+<!-- build.mjs bundles src/main.js into app.js (classic IIFE) next to this file; main.js calls createShell(state) first. -->
+<script src="app.js?v=1" defer></script>
+</body>
+</html>

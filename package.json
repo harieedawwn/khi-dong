@@ -1,0 +1,13 @@
+{
+  "name": "ong-khi-dong",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ống khí động: khảo sát lực cản và lực nâng (Vật lí 10, Bài 19)",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/physics.test.mjs test/flow.test.mjs test/geom.test.mjs"
+  },
+  "dependencies": { "three": "0.170.0" },
+  "devDependencies": { "esbuild": "^0.24.0" }
+}
