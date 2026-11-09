@@ -46,7 +46,7 @@ async function boot() {
   state.set({ tier: guessTier() });
   let scene;
   try { scene = createScene({ tier: state.get().tier }); }
-  catch (e) { console.error(e); fatal('Thiết bị hoặc trình duyệt này không hỗ trợ WebGL, nên không hiển thị được ống khí động 3D.'); return; }
+  catch (e) { console.error(e); fatal('Thiết bị hoặc trình duyệt này không hỗ trợ WebGL, nên không hiển thị được ống khí động 3D. (' + (e && e.message ? e.message : e) + ')'); return; }
   state.on('change:tier', () => scene.setTier(state.get().tier));
 
   const flow = flowM.createFlow();
