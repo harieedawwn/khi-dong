@@ -60,7 +60,7 @@ export const ease = makeBezier(0.2, 0.7, 0.2, 1);
 
 export function createScene(opts = {}) {
   let tier = opts.tier === 'high' ? 'high' : 'low';
-  const parent = opts.parent || ensureStage();
+  let parent = opts.parent || ensureStage();
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setClearColor(HALL, 1);
@@ -508,7 +508,17 @@ export function createScene(opts = {}) {
     }
     return portrait;
   }
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(resize).observe(parent);
+  const stageRO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+  if (stageRO) stageRO.observe(parent);
+  // The UI shell builds the real #stage after the scene exists: move the canvas there (the temp stage sits behind the opaque #app).
+  function setParent(el) {
+    if (!el || el === parent) return;
+    const old = parent;
+    if (stageRO) { stageRO.unobserve(old); stageRO.observe(el); }
+    parent = el; el.insertBefore(canvas, el.firstChild);
+    if (old && old !== el && !old.children.length && old.parentNode) old.parentNode.removeChild(old);
+    resize();
+  }
   window.addEventListener('resize', resize);
 
   function setTier(t) {
@@ -531,6 +541,6 @@ export function createScene(opts = {}) {
     setWind(uvis) { fanVis = uvis; },
     setStrutTop(y) { strutTarget = y; },
     setFocusRadius(r) { focusR = Math.max(0.1, r); },
-    getTier() { return tier; }, resize, start, stop,
+    getTier() { return tier; }, resize, start, stop, setParent,
   };
 }

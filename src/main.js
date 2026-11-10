@@ -120,6 +120,7 @@ async function boot() {
   };
   sfxH = await initMod('sfx', sfxM);
   await initMod('shell', shellM);
+  { const st = document.querySelector('#app .stage'); if (st) scene.setParent(st); }
   const modelview = modelviewM.init(ctx); ctx.modelview = modelview;
   loadModel(true);                                    // first model before UI modules ask for ctx.getModel()
   await initMod('controls', controlsM);
