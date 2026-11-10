@@ -470,14 +470,27 @@ export function createScene(opts = {}) {
   /* ------------------------------------------------------------ loop etc. */
   const frameCbs = []; let fanVis = 0, raf = 0, last = 0, running = false;
   function onFrame(fn) { frameCbs.push(fn); return () => { const i = frameCbs.indexOf(fn); if (i >= 0) frameCbs.splice(i, 1); }; }
+  let errShown = false;
+  function reportFrameError(where, e) {
+    console.error('[' + where + ']', e);
+    if (errShown) return; errShown = true;
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:9999;max-width:90vw;padding:6px 10px;background:#7a0b1c;color:#fff;font:12px/1.4 monospace;border-radius:4px';
+    d.textContent = 'Lỗi 3D (' + where + '): ' + (e && e.stack ? String(e.stack).split('\n').slice(0, 3).join(' | ') : e);
+    document.body.appendChild(d);
+  }
   function frame(t) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.1, Math.max(0, (t - last) / 1000)); last = t;
-    for (let i = 0; i < frameCbs.length; i++) frameCbs[i](dt);
-    if (strutTarget !== strutTop) { strutTop = strutTarget; applyStrut(); }
-    fan.rotation.x += Math.min(fanVis * 3, 12) * dt;
-    stepCamera(dt);
-    renderer.render(scene, camera);
+    for (let i = 0; i < frameCbs.length; i++) {
+      try { frameCbs[i](dt); } catch (e) { reportFrameError('frame#' + i, e); }
+    }
+    try {
+      if (strutTarget !== strutTop) { strutTop = strutTarget; applyStrut(); }
+      fan.rotation.x += Math.min(fanVis * 3, 12) * dt;
+      stepCamera(dt);
+      renderer.render(scene, camera);
+    } catch (e) { reportFrameError('render', e); }
   }
   function start() { if (running) return; running = true; last = performance.now(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); }
