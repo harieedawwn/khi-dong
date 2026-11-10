@@ -3,7 +3,20 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries as mergeRaw } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// mergeGeometries returns null when index/attribute sets differ; normalise first, and fail loudly with the block name.
+function mergeGeometries(list, useGroups, name = 'geometry') {
+  if (!list.length) throw new Error('mergeGeometries: danh sách rỗng (' + name + ')');
+  const anyIdx = list.some((g) => g.index), allIdx = list.every((g) => g.index);
+  const gs = (anyIdx && !allIdx) ? list.map((g) => (g.index ? g.toNonIndexed() : g)) : list;
+  const common = Object.keys(gs[0].attributes).filter((k) => gs.every((g) => g.attributes[k]));
+  for (const g of gs) for (const k of Object.keys(g.attributes)) if (!common.includes(k)) g.deleteAttribute(k);
+  for (const g of gs) g.morphAttributes = {};
+  const m = mergeRaw(gs, useGroups);
+  if (!m) throw new Error('mergeGeometries thất bại: ' + name + ' [' + common.join(',') + ']');
+  return m;
+}
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const DEG = Math.PI / 180;
@@ -178,7 +191,7 @@ export function createScene(opts = {}) {
 
   /* steel material + merge */
   const steelMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.6, roughness: 0.42 });
-  const steel = new THREE.Mesh(mergeGeometries(steelGeos, false), steelMat);
+  const steel = new THREE.Mesh(mergeGeometries(steelGeos, false, 'steel'), steelMat);
   steel.name = 'frame';
   scene.add(steel);
   for (const g of steelGeos) g.dispose();
@@ -215,9 +228,9 @@ export function createScene(opts = {}) {
   const R_F = 1.15, DX1 = 5.4, HX1 = 6.3;
   const dif = loft(X1, DX1, 24, (t, s) => { const e = sm(t); s.zz = ZH + (R_F - ZH) * e; s.yy = YH + (R_F - YH) * e; s.c = e; s.R = R_F; });
   const housing = loft(DX1, HX1, 4, (t, s) => { s.zz = R_F; s.yy = R_F; s.c = 1; s.R = R_F; });
-  const duct = new THREE.Mesh(mergeGeometries([contraction], false),
+  const duct = new THREE.Mesh(mergeGeometries([contraction], false, 'contraction'),
     new THREE.MeshStandardMaterial({ color: 0x7F8A96, metalness: 0.35, roughness: 0.55, side: THREE.DoubleSide }));
-  const diffuser = new THREE.Mesh(mergeGeometries([dif, housing], false),
+  const diffuser = new THREE.Mesh(mergeGeometries([dif, housing], false, 'diffuser'),
     new THREE.MeshStandardMaterial({ color: 0x7B8590, metalness: 0.35, roughness: 0.55, side: THREE.DoubleSide }));
   scene.add(duct, diffuser);
   // housing flange rings
@@ -226,7 +239,7 @@ export function createScene(opts = {}) {
     for (const x of [DX1, HX1]) {
       const g = new THREE.TorusGeometry(R_F + 0.01, 0.035, 8, 64); g.rotateY(Math.PI / 2); g.translate(x, 0, 0); paint(g, FLANGE); rg.push(g);
     }
-    const m = new THREE.Mesh(mergeGeometries(rg, false), steelMat); scene.add(m);
+    const m = new THREE.Mesh(mergeGeometries(rg, false, 'rings'), steelMat); scene.add(m);
   }
 
   // honeycomb straightener + screens (alpha-tested textures)
@@ -268,7 +281,7 @@ export function createScene(opts = {}) {
       b.rotateX(i * 2 * Math.PI / 7); paint(b, 0x363C43); parts.push(b);
     }
     for (const g of parts) { if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); }
-    const fm = new THREE.Mesh(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.5, roughness: 0.45, side: THREE.DoubleSide }));
+    const fm = new THREE.Mesh(mergeGeometries(parts, false, 'fan'), new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.5, roughness: 0.45, side: THREE.DoubleSide }));
     fan.add(fm);
     const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.8, 24).rotateZ(Math.PI / 2).translate(0.55, 0, 0),
       new THREE.MeshStandardMaterial({ color: 0x4A525B, metalness: 0.5, roughness: 0.45 }));
