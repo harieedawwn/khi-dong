@@ -21,4 +21,4 @@ Kiểm lần cuối: `npm test` 34/34 đạt (physics 11, flow 15, geom 8, plane
 | 12 | CHƯA KIỂM | cần điện thoại thật (>= 30 fps, tier low) |
 
 Thay đổi chính của đợt này: thân xe / tàu dựng từ tiết diện spline (src/geom/hull.js, kit.js), kính và đèn phủ bề mặt, bánh xe có vành, màu sơn riêng từng mô hình (assemble: parts.palette, thuộc tính mat); ảnh thu nhỏ tĩnh (tools/thumbs.mjs -> assets/thumbs/*.webp <= 8 KB, build.mjs nhúng); tiêu đề hộp trắng + tên trường + khung số đo (Be Vietnam Pro 800); bảng bên và dock thu gọn được; khung hình tự khớp theo mô hình (vùng trống giữa các bảng) + cận cảnh; ẩn khung thép và kính ống; phát dòng khí 0,25-1x và tạm dừng; nhãn lực "F cản", "F nâng"; mục HANDOFF-flow.
-Giới hạn còn lại: sdf của bánh xe, ống, thanh và khối tròn xoay là xấp xỉ; F nâng rất nhỏ (1e-15) vẫn có thể hiện dạng số mũ trên HUD.
+Giới hạn còn lại: sdf của bánh xe, ống, thanh và khối tròn xoay là xấp xỉ.

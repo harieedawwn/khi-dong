@@ -28,7 +28,7 @@ export function init(ctx) {
     const slow = num(r.slow) || (num(r.Uvis) > 0 ? U / r.Uvis : NaN);
     const sepOK = a.sepDeg != null && isFinite(a.sepDeg);
     const t = {
-      FD: num(a.FD), FL: num(a.FL), CD: num(a.CD), CL: num(a.CL), LD: num(a.LD),
+      FD: num(a.FD), FL: Math.abs(num(a.FL)) < 1e-6 ? 0 : num(a.FL), CD: num(a.CD), CL: num(a.CL), LD: num(a.LD),
       frontPa: num(sf.stagPa != null ? sf.stagPa : sf.frontPa), frontN: num(sf.windwardN != null ? sf.windwardN : sf.frontN),
       fShed: a.fShed > 0 ? num(a.fShed) : NaN, Dshed: num(a.Dshed),
       U, kmh: U * 3.6, M, Re: num(a.Re), q: num(a.q), p0: num(a.p0), T0: num(a.T0) - 273.15,
