@@ -224,6 +224,7 @@ export function createPlane(opts) {
   const P = { tau: 0.56, cs: TUNE.cs, slip: 0 };
   const stat = { backend: 'none', tier: tierName, level: 0, nx: 0, ny: 0, dnx: 0, dny: 0, h: 0, cellsAcross: 0, stepsPerFrame: 0, stepsPerSec: 0, visScale: 1, reSolver: 0, tau: 0, slip: 0, gpuMs: 0, cpuMs: 0, emaDt: 0, lbmOn: false };
   const nozBuf = { a: null };
+  let govOn = opts.governor !== false;
   const viewCfg = { lines: 24, density: 0.7 };
 
   function pickBackend() {
@@ -314,7 +315,7 @@ export function createPlane(opts) {
   function update(p, UvisIn, dt) {
     if (!backend) pickBackend();
     frames++;
-    if (dt > 0 && opts.governor !== false) govern(dt);
+    if (dt > 0 && govOn) govern(dt);
     const t0 = now();
     const a = Math.abs(p.alphaDeg);
     const nb = a <= (band === 10 ? 11 : 10) ? 10 : a <= (band === 30 ? 20 : 21) ? 20 : 30;
@@ -395,6 +396,7 @@ export function createPlane(opts) {
     colors: { HEX, MULTI },
     resetDye() { if (backend) backend.clearDye(); },
     reinit() { needInit = true; },
+    setGovernor(on) { govOn = !!on; },   // debugging / screenshots: pin the level
     _setLevel: setLevel,
   };
 }
