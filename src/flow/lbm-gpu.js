@@ -207,7 +207,7 @@ export function createGpuBackend(renderer) {
 
   let nx = 0, ny = 0, dnx = 0, dny = 0, pa = null, pb_ = null, sRT = null, farRT = null, d0 = null, d1 = null, dF = null, packRT = null;
   let nozTex = null, sdfTex = null, f0Tex = null, f1Tex = null, bake = null;
-  let pbo = null, sync = null, bytes = null, lastWin = null, clearDyePending = true;
+  let pbos = [], issued = [], slot = 0, bytes = null, lastWin = null, clearDyePending = true;
   const rt = (w, h, count, linear) => {
     const t = new THREE.WebGLRenderTarget(w, h, { count: count || 1, type: HF, format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false, generateMipmaps: false,
       minFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, magFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, wrapS: THREE.ClampToEdgeWrapping, wrapT: THREE.ClampToEdgeWrapping });
@@ -219,7 +219,7 @@ export function createGpuBackend(renderer) {
     renderer.setRenderTarget(target); renderer.render(scene, cam);
     renderer.setRenderTarget(prev); renderer.autoClear = ac;
   }
-  function disposeRT() { for (const t of [pa, pb_, sRT, farRT, d0, d1, dF, packRT]) if (t) t.dispose(); if (nozTex) nozTex.dispose(); if (sync) { gl.deleteSync(sync); sync = null; } if (pbo) { gl.deleteBuffer(pbo); pbo = null; } }
+  function disposeRT() { for (const t of [pa, pb_, sRT, farRT, d0, d1, dF, packRT]) if (t) t.dispose(); if (nozTex) nozTex.dispose(); for (const b of pbos) gl.deleteBuffer(b); pbos = []; issued = []; slot = 0; }
   function half(arr, n, ch, pick) {
     const out = new Uint16Array(n * 4);
     for (let i = 0; i < n; i++) for (let c = 0; c < 4; c++) { const k = pick[c]; out[4 * i + c] = THREE.DataUtils.toHalfFloat(k < 0 ? 0 : Math.max(-60000, Math.min(60000, arr[i * ch + k]))); }
@@ -254,7 +254,8 @@ export function createGpuBackend(renderer) {
       nozTex = new THREE.DataTexture(new Float32Array(dny * 4), dny, 1, THREE.RGBAFormat, THREE.FloatType);
       nozTex.minFilter = nozTex.magFilter = THREE.NearestFilter; nozTex.needsUpdate = true;
       bytes = new Uint8Array(nx * ny * 4);
-      pbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, nx * ny * 4, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      for (let i = 0; i < 2; i++) { const b = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b); gl.bufferData(gl.PIXEL_PACK_BUFFER, nx * ny * 4, gl.STREAM_READ); pbos.push(b); issued.push(false); }
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
       clearDyePending = true;
     },
     setBake(b) {
@@ -283,7 +284,11 @@ export function createGpuBackend(renderer) {
       }
     },
     advectDye(disp, nsub, lbmOn, ulb) {
-      if (clearDyePending) { const prev = renderer.getRenderTarget(); for (const t of [d0, d1, dF]) { renderer.setRenderTarget(t); renderer.clear(); } renderer.setRenderTarget(prev); clearDyePending = false; }
+      if (clearDyePending) {      // transparent black: renderer.clear() alone would fill with the scene's clear colour (alpha 1 = a white sheet)
+        const prev = renderer.getRenderTarget(), oc = new THREE.Color(), oa = renderer.getClearAlpha(); renderer.getClearColor(oc); renderer.setClearColor(0x000000, 0);
+        for (const t of [d0, d1, dF]) { renderer.setRenderTarget(t); renderer.clear(); }
+        renderer.setRenderTarget(prev); renderer.setClearColor(oc, oa); clearDyePending = false;
+      }
       const dh = (TUN.x1 - TUN.x0) / dnx;
       for (const m of [mAdv1, mAdv2]) {
         const u = m.uniforms; u.tFar.value = farRT.texture; u.tC.value = pa.textures[2]; u.uTun.value.set(TUN.x0, TUN.y0, dh, 0);
@@ -299,27 +304,25 @@ export function createGpuBackend(renderer) {
     },
     setNozzles(profile) { nozTex.image.data.set(profile); nozTex.needsUpdate = true; },
     clearDye() { clearDyePending = true; },
-    // asynchronous read-back through a pixel pack buffer; returns true when dst holds a new field
+    // read-back through a ring of two pixel pack buffers, no fences (Chrome only reports a fence as signalled after
+    // a later task, so polling it starved the CPU copy in slow / software WebGL): the buffer written two calls ago is
+    // read now (the GPU has long finished it; if not, the read waits, which also paces a backed-up software GPU).
+    // Returns true when dst holds a new field.
     readVelocity(dst, ulb) {
       let fresh = false;
-      if (sync) {
-        const s = gl.clientWaitSync(sync, 0, 0);
-        if (s === gl.ALREADY_SIGNALED || s === gl.CONDITION_SATISFIED) {
-          gl.deleteSync(sync); sync = null;
-          gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, bytes); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-          const n = nx * ny;
-          for (let i = 0; i < n; i++) { const o = 4 * i; dst[2 * i] = ((bytes[o] * 256 + bytes[o + 1]) / 65535 - 0.5) * 4; dst[2 * i + 1] = ((bytes[o + 2] * 256 + bytes[o + 3]) / 65535 - 0.5) * 4; }
-          fresh = true;
-        } else if (s === gl.WAIT_FAILED) { gl.deleteSync(sync); sync = null; }
+      const b = pbos[slot];
+      if (issued[slot]) {
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, bytes); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+        const n = nx * ny;
+        for (let i = 0; i < n; i++) { const o = 4 * i; dst[2 * i] = ((bytes[o] * 256 + bytes[o + 1]) / 65535 - 0.5) * 4; dst[2 * i + 1] = ((bytes[o + 2] * 256 + bytes[o + 3]) / 65535 - 0.5) * 4; }
+        fresh = true;
       }
-      if (!sync) {
-        mPack.uniforms.tC.value = pa.textures[2]; mPack.uniforms.uIu.value = 1 / ulb;
-        const prev = renderer.getRenderTarget(), ac = renderer.autoClear;
-        renderer.autoClear = false; mesh.material = mPack; renderer.setRenderTarget(packRT); renderer.render(scene, cam);
-        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.readPixels(0, 0, nx, ny, gl.RGBA, gl.UNSIGNED_BYTE, 0); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-        sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); gl.flush();
-        renderer.setRenderTarget(prev); renderer.autoClear = ac;
-      }
+      mPack.uniforms.tC.value = pa.textures[2]; mPack.uniforms.uIu.value = 1 / ulb;
+      const prev = renderer.getRenderTarget(), ac = renderer.autoClear;
+      renderer.autoClear = false; mesh.material = mPack; renderer.setRenderTarget(packRT); renderer.render(scene, cam);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b); gl.readPixels(0, 0, nx, ny, gl.RGBA, gl.UNSIGNED_BYTE, 0); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      issued[slot] = true; slot = (slot + 1) % pbos.length;
+      renderer.setRenderTarget(prev); renderer.autoClear = ac;
       return fresh;
     },
     dyeTexture() { return d0 ? d0.texture : null; },

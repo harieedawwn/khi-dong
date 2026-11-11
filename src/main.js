@@ -203,7 +203,7 @@ async function boot() {
 
   scene.renderer.compile(scene.scene, scene.camera);   // warm up shaders before the first interaction
   window.__kit = { renderer: scene.renderer, tier: state.get().tier };
-  window.__app = { ctx, modelview, scene, results, loadModel };
+  window.__app = { ctx, modelview, scene, results, loadModel, tick };
   window.__ready = true;
 }
 
