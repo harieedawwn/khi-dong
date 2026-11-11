@@ -22,3 +22,8 @@ Kiểm lần cuối: `npm test` 34/34 đạt (physics 11, flow 15, geom 8, plane
 
 Thay đổi chính của đợt này: thân xe / tàu dựng từ tiết diện spline (src/geom/hull.js, kit.js), kính và đèn phủ bề mặt, bánh xe có vành, màu sơn riêng từng mô hình (assemble: parts.palette, thuộc tính mat); ảnh thu nhỏ tĩnh (tools/thumbs.mjs -> assets/thumbs/*.webp <= 8 KB, build.mjs nhúng); tiêu đề hộp trắng + tên trường + khung số đo (Be Vietnam Pro 800); bảng bên và dock thu gọn được; khung hình tự khớp theo mô hình (vùng trống giữa các bảng) + cận cảnh; ẩn khung thép và kính ống; phát dòng khí 0,25-1x và tạm dừng; nhãn lực "F cản", "F nâng"; mục HANDOFF-flow.
 Giới hạn còn lại: sdf của bánh xe, ống, thanh và khối tròn xoay là xấp xỉ.
+
+## Đợt 2: tên trường + Tự lắp ghép
+- Tên trường là thẻ kem bo tròn có vạch đỏ bên trái; `node tools/qa.mjs --builder rocket` (và `--builder car`) ở 360x740, 844x390, 768x1024, 1366x768, 1920x1080: không cuộn, không chữ bị cắt, không chồng.
+- `npm test` 34/34; bảng CD in ra của physics.test không đổi. `node tools/meshcheck.mjs --builder --sdf`: mẫu và mọi tổ hợp mũi/thân/đuôi (có và không có bánh) kín nước, sdf đúng dấu. Builder tối đa 39,7 nghìn đỉnh; CD@20 giọt nước 0,061 < xe 0,144 < tấm 0,80, không NaN.
+- Chưa kiểm trên điện thoại thật.
