@@ -32,7 +32,7 @@ function getCache(flow, nv) {
   let c = cache.get(flow);
   if (!c || c.nv !== nv) {
     c = { nv, cp: new Float32Array(nv), tau: new Float32Array(nv), proj: new Float32Array(nv),
-      out: { cp: null, tau: null, frontPa: 0, frontN: 0, cpRange: [0, 0] } };
+      out: { cp: null, tau: null, frontPa: 0, frontN: 0, stagPa: 0, windwardN: 0, windwardMeanPa: 0, cpRange: [0, 0] } };
     c.out.cp = c.cp; c.out.tau = c.tau;
     cache.set(flow, c);
   }
@@ -49,7 +49,7 @@ export function surfaceFields(flow, model, res, air, alphaDeg) {
   const sd = flow.surfaceData();
   if (!sd || sd.model !== model || sd.trivial || sd.nv !== nv) {
     cp.fill(0); tau.fill(0);
-    out.frontPa = 0; out.frontN = 0; out.cpRange[0] = 0; out.cpRange[1] = 0;
+    out.frontPa = 0; out.frontN = 0; out.stagPa = 0; out.windwardN = 0; out.windwardMeanPa = 0; out.cpRange[0] = 0; out.cpRange[1] = 0;
     return out;
   }
   const vel = sd.surf;
@@ -139,8 +139,12 @@ export function surfaceFields(flow, model, res, air, alphaDeg) {
     const cpf = (cp[i0] + cp[i1] + cp[i2]) / 3;
     sumA += area; sumP += cpf * area; sumF += cpf * (-nfU) * area;
   }
-  out.frontPa = sumA > 0 ? q * sumP / sumA : 0;
-  out.frontN = q * sumF;
+  // stagPa: stagnation pressure above ambient, p0 - p_inf = q * Cp0 (always positive).
+  // windwardN: pressure force (gauge) on the windward faces along the stream. windwardMeanPa: area mean of the
+  // gauge pressure there; it can be negative (suction on the shoulders outweighs the stagnation region).
+  // frontPa / frontN are the old names kept for the UI: frontPa now carries stagPa, frontN carries windwardN.
+  out.stagPa = q * C0; out.windwardN = q * sumF; out.windwardMeanPa = sumA > 0 ? q * sumP / sumA : 0;
+  out.frontPa = out.stagPa; out.frontN = out.windwardN;
   out.cpRange[0] = cmin; out.cpRange[1] = cmax;
   return out;
 }

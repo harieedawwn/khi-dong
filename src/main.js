@@ -7,6 +7,7 @@ import * as aeroM from './physics/aero.js';
 import * as aerodataM from './physics/aerodata.js';
 import * as flowM from './flow/flowfield.js';
 import * as surfaceM from './flow/surface.js';
+import { createGpuBackend } from './flow/lbm-gpu.js';
 import * as assembleM from './geom/assemble.js';
 import * as catalogM from './geom/catalog.js';
 import * as libraryM from './geom/library.js';
@@ -50,6 +51,8 @@ async function boot() {
   state.on('change:tier', () => scene.setTier(state.get().tier));
 
   const flow = flowM.createFlow();
+  // mid-plane solver on the scene's WebGL2 context (falls back to the CPU backend when float targets are missing)
+  if (flow.plane) { flow.plane.attachGpu(() => createGpuBackend(scene.renderer), state.get().tier); state.on('change:tier', () => flow.plane.setTier(state.get().tier)); }
   let sfxH = null;
   const sfx = { play: (...a) => (sfxH && sfxH.play ? sfxH.play(...a) : undefined), setWind: (u) => (sfxH && sfxH.setWind ? sfxH.setWind(u) : undefined) };
 
@@ -139,7 +142,7 @@ async function boot() {
 
   /* ----------------------------------------------------------- frame loop */
   const evalArgs = { aeroDef: null, info: null, air: null, U: 0, alphaDeg: 0 };
-  const results = { air: null, aero: null, surface: { frontPa: 0, frontN: 0, cpRange: [0, 1] }, probe: null, U: 0, Uvis: 0, slow: 1, phase: 0 };
+  const results = { air: null, aero: null, surface: { frontPa: 0, frontN: 0, stagPa: 0, windwardN: 0, windwardMeanPa: 0, cpRange: [0, 1] }, probe: null, U: 0, Uvis: 0, slow: 1, phase: 0 };
   let air = null, envH = NaN, envT = NaN, envP = NaN, envMode = '';
   let res = null, lastU = NaN, lastAlpha = NaN, lastAir = null, lastActive = null;
   let clock = 0, lastSurf = -1, pending = false, urgent = false;
@@ -153,7 +156,8 @@ async function boot() {
       envH = env.h; envT = env.T; envP = env.p; envMode = env.mode; air = atmoM.air(env);
     }
     const U = s.U, alpha = s.alphaDeg;
-    const Uvis = Math.min(4, 0.55 * Math.pow(U, 0.45));
+    // U_vis (SPEC 3) times the solver's visual time scale k <= 1 (step budget / governor), so every animation stays consistent
+    const Uvis = Math.min(4, 0.55 * Math.pow(U, 0.45)) * (flow.visScale ? flow.visScale() : 1);
     ctx.uvis = Uvis;
 
     let inputsChanged = false;
@@ -190,7 +194,7 @@ async function boot() {
     results.air = air; results.aero = res; results.U = U; results.Uvis = Uvis; results.slow = Uvis > 0 ? U / Uvis : 1;
     results.phase = flowReady ? flow.phase() : 0;
     const sf = results.surface;
-    if (surfFields) { sf.frontPa = surfFields.frontPa; sf.frontN = surfFields.frontN; sf.cpRange = surfFields.cpRange; } else { sf.frontPa = 0; sf.frontN = 0; }
+    if (surfFields) { sf.frontPa = surfFields.frontPa; sf.frontN = surfFields.frontN; sf.stagPa = surfFields.stagPa; sf.windwardN = surfFields.windwardN; sf.windwardMeanPa = surfFields.windwardMeanPa; sf.cpRange = surfFields.cpRange; } else { sf.frontPa = 0; sf.frontN = 0; sf.stagPa = 0; sf.windwardN = 0; sf.windwardMeanPa = 0; }
     const pr = s.probe;
     results.probe = pr && pr.on && flowReady ? flow.probe(pr.x, pr.y, pr.z) : null;
     state.emit('results', results);

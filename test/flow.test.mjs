@@ -190,7 +190,8 @@ test('finite lifting line: downwash behind, upwash outboard (sign check)', async
 });
 
 test('base field is divergence free (exact sum and sampled grid)', async () => {
-  const R = 0.15, f = await bakeModel(ellipsoid(R, R, 600));
+  // analytic 3D base field only: the mid-plane solver (2D section flow, see plane.test.mjs) is switched off here
+  const R = 0.15, f = await bakeModel(ellipsoid(R, R, 600), AD, { sliceMs: 1e9, worker: false, plane: false });
   f.update(mkRes({ regime: { flow: 'subsonic', bl: 'turbulent', wake: 'none' }, Dshed: 0.3 }), 0, 1, 0);
   const r = rng(21), g = f._debug.grid(), h = Math.max(g.hx, g.hy), out = new Float64Array(9), a = new Float64Array(3), b = new Float64Array(3);
   const eps = 1e-4; let maxE = 0, maxS = 0, nS = 0;

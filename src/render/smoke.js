@@ -1,6 +1,9 @@
-// P6 — smoke.js: streaklines from the rake, drawn as camera-facing ribbons in ONE draw call.
+// P6 — smoke.js. rake 'plane': laser-sheet smoke layer on z = 0, the dye field of the mid-plane solver (flow.plane).
+// rake 'grid': 3D streaklines drawn as camera-facing ribbons in ONE draw call (adaptive sub-steps, B-spline smoothing,
+// stretched segments thin out instead of drawing straight 'lightning' chords).
 // Units: metres, world frame (SPEC §3). All motion uses U_vis (slow motion); no per-frame allocations.
 import * as THREE from 'three';
+import { TUN } from '../flow/plane.js';
 
 const NOZ_X = -2.6, X_END = 3.0, Y_WALL = 0.78, Z_WALL = 1.18;
 const TIERS = { low: { L: 24, N: 110 }, high: { L: 48, N: 170 } };
@@ -15,6 +18,28 @@ const BOX_X = 1.15, BOX_Y = 0.95;   // only ask sdf near the model
 const MARGIN = 0.004;           // keep points this far outside the body
 const MIN_PX = 1.8;             // minimum ribbon width in device pixels (anti-aliasing / no shimmer)
 const WARM_S = 1.4, WARM_K = 3; // after a reset, run time-lapse x3 for 1.4 s so the picture fills fast
+
+const DVERT = /* glsl */`
+varying vec2 vUv;
+void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const DFRAG = /* glsl */`
+uniform sampler2D uDye;
+uniform vec2 uSize;
+uniform vec3 uTint;
+uniform float uMulti, uOpacity, uGain;
+varying vec2 vUv;
+void main(){
+  // smooth (quintic) reconstruction: crisp filaments without bilinear diamonds, no blur and no glow
+  vec2 p = vUv * uSize - 0.5, i = floor(p), f = p - i;
+  f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  vec4 d = texture2D(uDye, (i + 0.5 + f) / uSize);
+  float a = smoothstep(0.03, 0.62, d.a * uGain);
+  a *= smoothstep(0.0, 0.02, vUv.x - 0.015) * (1.0 - smoothstep(0.93, 0.995, vUv.x));
+  if (a < 0.004) discard;
+  vec3 c = mix(uTint, d.rgb / max(d.a, 1e-4), uMulti);
+  gl_FragColor = vec4(c * 0.94, a * uOpacity);
+  #include <colorspace_fragment>
+}`;
 
 const VERT = /* glsl */`
 attribute vec3 aInfo;   // x across (-1/+1), y alpha, z facing of the +side towards the key light
@@ -94,6 +119,42 @@ export function init(ctx) {
 
   const UV = new Float64Array(1); UV[0] = Math.min(4, 0.55 * Math.pow(state.get().U || 20, 0.45));
   state.on('results', (r) => { if (r && r.Uvis > 0) UV[0] = r.Uvis; });
+
+  // ---- laser-sheet dye layer (rake 'plane') ----
+  const plane = flow.plane || null;
+  const dMat = new THREE.ShaderMaterial({
+    vertexShader: DVERT, fragmentShader: DFRAG, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
+    uniforms: { uDye: { value: null }, uSize: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 } },
+  });
+  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(TUN.x1 - TUN.x0, TUN.y1 - TUN.y0), dMat);
+  sheet.position.set(0.5 * (TUN.x0 + TUN.x1), 0.5 * (TUN.y0 + TUN.y1), 0);
+  sheet.frustumCulled = false; sheet.visible = false; sheet.renderOrder = 5;
+  (sc.root || sc.scene).add(sheet);
+  let cpuTex = null, cpuBytes = null;
+  function dyeTexture() {
+    const be = plane.backend(); if (!be) return null;
+    const sz = be.dyeSize(); dMat.uniforms.uSize.value.set(sz[0], sz[1]);
+    if (be.kind === 'gpu') return be.dyeTexture();
+    const d = be.dyeData(), n = sz[0] * sz[1] * 4;
+    if (!cpuTex || cpuBytes.length !== n) {
+      if (cpuTex) cpuTex.dispose();
+      cpuBytes = new Uint8Array(n); cpuTex = new THREE.DataTexture(cpuBytes, sz[0], sz[1], THREE.RGBAFormat, THREE.UnsignedByteType);
+      cpuTex.minFilter = cpuTex.magFilter = THREE.LinearFilter; cpuTex.generateMipmaps = false;
+    }
+    for (let i = 0; i < n; i++) { const v = d[i] * 255; cpuBytes[i] = v < 0 ? 0 : v > 255 ? 255 : v; }
+    cpuTex.needsUpdate = true;
+    return cpuTex;
+  }
+  function updateSheet(view, fade) {
+    plane.setView(view);
+    const tex = dyeTexture();
+    if (!tex) { sheet.visible = false; return; }
+    const u = dMat.uniforms; u.uDye.value = tex;
+    col.set(HEX[view.smokeColor] || HEX.white); u.uTint.value.set(col.r, col.g, col.b);
+    u.uMulti.value = view.smokeColor === 'multi' ? 1 : 0;
+    u.uOpacity.value = fade * (0.45 + 0.55 * view.density); u.uGain.value = 0.8 + 0.6 * view.density;
+    sheet.visible = true;
+  }
 
   // key light direction (world), default if the scene has none
   const Ldir = [0.35, 0.85, 0.4];
@@ -199,11 +260,16 @@ export function init(ctx) {
         let id = hd - k; if (id < 0) id += N;
         const pi = base + id, j = pi * 3;
         let x = P[j], y = P[j + 1], z = P[j + 2];
-        for (let s = 0; s < nsub; s++) {      // RK2 (midpoint)
+        // RK2 (midpoint) with adaptive sub-steps: halve the step while the velocity turns by more than ~20 % per step
+        let left = sdt, hs = h, guard = 0;
+        while (left > 1e-7 && guard++ < 24) {
+          if (hs > left) hs = left;
           S.at(x, y, z);
-          const mx = x + 0.5 * h * S.ux, my = y + 0.5 * h * S.uy, mz = z + 0.5 * h * S.uz;
-          S.at(mx, my, mz);
-          x += h * S.ux; y += h * S.uy; z += h * S.uz;
+          const ax = S.ux, ay = S.uy, az = S.uz;
+          S.at(x + 0.5 * hs * ax, y + 0.5 * hs * ay, z + 0.5 * hs * az);
+          const ex = S.ux - ax, ey = S.uy - ay, ez = S.uz - az;
+          if (ex * ex + ey * ey + ez * ez > 0.04 * U * U && hs > sdt / 16) { hs *= 0.5; continue; }
+          x += hs * S.ux; y += hs * S.uy; z += hs * S.uz; left -= hs; hs *= 1.5;
         }
         // fluctuation proxy: deviation of the local velocity from the free stream
         const dx = S.ux - U, dev = Math.sqrt(dx * dx + S.uy * S.uy + S.uz * S.uz) * invU;
@@ -253,18 +319,21 @@ export function init(ctx) {
     const pxK = persp ? 2 * Math.tan(cam.fov * Math.PI / 360) / H * MIN_PX : (cam.top - cam.bottom) / (cam.zoom || 1) / H * MIN_PX;
     const wScale = 0.7 + 0.6 * view.density;
     const lx = Ldir[0], ly = Ldir[1], lz = Ldir[2];
+    const seg0 = 2.6 * (X_END - NOZ_X) / (N - 10);
     let sx = 0, sy = 0, sz = 1;
     for (let l = 0; l < nL; l++) {
       const n = cnt[l], base = l * N, hd = head[l];
       for (let k = 0; k < n; k++) {
         let id = hd - k; if (id < 0) id += N;
         const pi = base + id, j = pi * 3;
-        const x = P[j], y = P[j + 1], z = P[j + 2];
         let ia = k > 0 ? hd - (k - 1) : hd - k; if (ia < 0) ia += N;      // newer neighbour
         let ib = k < n - 1 ? hd - (k + 1) : hd - k; if (ib < 0) ib += N;  // older neighbour
         const ja = (base + ia) * 3, jb = (base + ib) * 3;
+        // quadratic B-spline smoothing of the polyline (1/4, 1/2, 1/4): no corners, hence no zigzag
+        const x = 0.25 * (P[ja] + P[jb]) + 0.5 * P[j], y = 0.25 * (P[ja + 1] + P[jb + 1]) + 0.5 * P[j + 1], z = 0.25 * (P[ja + 2] + P[jb + 2]) + 0.5 * P[j + 2];
         let tx = P[ja] - P[jb], ty = P[ja + 1] - P[jb + 1], tz = P[ja + 2] - P[jb + 2];
-        if (tx * tx + ty * ty + tz * tz < 1e-14) { tx = 1; ty = 0; tz = 0; }
+        const seg2 = tx * tx + ty * ty + tz * tz;
+        if (seg2 < 1e-14) { tx = 1; ty = 0; tz = 0; }
         const vx = cx - x, vy = cy - y, vz = cz - z;
         let ux = ty * vz - tz * vy, uy = tz * vx - tx * vz, uz = tx * vy - ty * vx;
         const ul = Math.sqrt(ux * ux + uy * uy + uz * uz);
@@ -276,6 +345,8 @@ export function init(ctx) {
         let a = k < 5 ? (k + 0.5) / 5 : 1;
         const xf = x > 2.2 ? (X_END - x) / 0.8 : 1; if (xf < a) a = xf < 0 ? 0 : xf;
         const rf = (N - 1 - k) / 12; if (rf < a) a = rf;
+        // a stretched filament is thinner smoke: fade with the stretch (2 * emission spacing = unstretched)
+        const st = seg0 / Math.sqrt(seg2 + 1e-12); if (st < 1) a *= st * st;
         const facing = sx * lx + sy * ly + sz * lz;
         const o = (base + k) * 6;
         posA[o] = x - sx * hw; posA[o + 1] = y - sy * hw; posA[o + 2] = z - sz * hw;
@@ -299,7 +370,13 @@ export function init(ctx) {
     if ((st.tier === 'high' ? 'high' : 'low') !== tierName) alloc(st.tier);
     const target = view.flow === 'smoke' ? 1 : 0, step = dt / FADE_S;
     const df = target - Z[0]; Z[0] += df > step ? step : df < -step ? -step : df;
-    if (Z[0] <= 0.001) { if (mesh.visible) mesh.visible = false; return; }
+    if (Z[0] <= 0.001) { if (mesh.visible) mesh.visible = false; if (sheet.visible) sheet.visible = false; return; }
+    if (plane && view.rake !== 'grid') {             // laser sheet: the solver's dye field
+      if (mesh.visible) { mesh.visible = false; nL = 0; }
+      updateSheet(view, Z[0]);
+      return;
+    }
+    if (sheet.visible) sheet.visible = false;
     let want = Math.round(view.lines); want = want < 1 ? 1 : want > L ? L : want;
     if (!mesh.visible) { mesh.visible = true; findLight(); nL = 0; }
     if (want !== nL || view.rake !== curRake) { nL = want; curRake = view.rake; layout(view); reset(); }
