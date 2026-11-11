@@ -4,12 +4,13 @@
 // đuôi đứng 'fin_v', cánh canh 'fin_0/90/180/270'; xe đua: 'wing_f' (trước), 'wing_r' (sau).
 // Vai trò: mũi/thân/đuôi = nose/body/tail, bánh = wheel, cánh quạt = rotor (flow:false), phụ tùng = detail.
 import { make } from './parts.js';
+import { frame, curve, panel, tube, strut, wheel, blob, box, carHull, archTone, sstep } from './kit.js';
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 
 /* ------------------------------------------------------------------ helpers */
 // frame: mét thật -> mét mô hình. (ox, oy) dịch gốc thật để mô hình nằm giữa ống; Lreal chỉ để chọn độ mịn lưới.
-function frame(s, ox, oy, Lreal, k = 1) { return { s, ref: 0.97 * k * Lreal * s, X: v => (v + ox) * s, Y: v => (v + oy) * s, Z: v => v * s, m: v => v * s }; }
+// (frame, wheel, box: xem kit.js)
 const sample = (x0, x1, n, fn) => Array.from({ length: n + 1 }, (_, i) => { const x = x0 + (x1 - x0) * (0.5 - 0.5 * Math.cos(Math.PI * i / n)); return [x, ...fn(x)]; });
 const rev = rows => rows.map(([x, r, yc = 0]) => [x, yc + r, yc - r, 2 * r]); // [x, r, yc] -> [x, top, bot, width]
 const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -26,8 +27,6 @@ function solid(F, rows, o = {}) {
 const wing = (F, o) => make('wing', { ref: F.ref, id: o.id ?? 'wing', role: o.role, profile: o.profile ?? '0012', tc: o.tc ?? 0.12, span: F.m(o.span), rootChord: F.m(o.cr), tipChord: F.m(o.ct ?? o.cr), sweepDeg: o.sweep ?? 0, dihedralDeg: o.dih ?? 0, incDeg: o.inc ?? 0, rootLE: [F.X(o.x), F.Y(o.y), 0], tone: o.tone ?? 0 });
 const stab = (F, o) => wing(F, { id: 'stab', role: 'fin', tc: 0.09, tone: 1, ...o });
 const fin = (F, o) => make('fin', { ref: F.ref, id: o.id ?? 'fin_v', profile: o.profile ?? '0012', tc: o.tc ?? 0.09, span: F.m(o.h), rootChord: F.m(o.cr), tipChord: F.m(o.ct), sweepDeg: o.sweep ?? 0, angleDeg: o.ang ?? 0, rootLE: [F.X(o.x), F.Y(o.y ?? 0), 0], tone: o.tone ?? 1 });
-const box = (F, o) => make('roundedBox', { ref: F.ref, id: o.id, role: o.role ?? 'detail', size: o.size.map(F.m), center: [F.X(o.c[0]), F.Y(o.c[1]), F.Z(o.c[2])], radius: F.m(o.r ?? 0.02), tone: o.tone ?? 2 });
-const wheel = (F, id, x, y, z, R, w) => make('wheel', { ref: F.ref, id, center: [F.X(x), F.Y(y), F.Z(z)], radius: F.m(R), width: F.m(w), spin: { axis: [0, 0, 1], rate: 24, center: [F.X(x), F.Y(y), F.Z(z)] } });
 const nacelle = (F, o) => make('nacelle', { ref: F.ref, id: o.id, x0: F.X(o.x), length: F.m(o.len), radius: F.m(o.r), y: F.Y(o.y), z: F.Z(o.z), endRatio: o.end ?? 0.6, tone: o.tone ?? 1 });
 const canopy = (F, o) => make('canopy', { ref: F.ref, id: o.id ?? 'canopy', x0: F.X(o.x), length: F.m(o.len), width: F.m(o.w), height: F.m(o.h), y: F.Y(o.y), peak: o.peak ?? 0.4, tone: o.tone ?? 2 });
 const sweepOf = (off, span) => Math.atan2(off, span) * R2D; // độ xuôi mép trước từ độ lệch thật
@@ -61,32 +60,6 @@ function plane(o) {
   for (const w of o.wheels || []) parts.push(wheel(F, w.id, w.x, w.y, w.z, w.r, w.w));
   for (const r of o.rotors || []) parts.push(make('rotor', { ref: F.ref, id: r.id, center: [F.X(r.c[0]), F.Y(r.c[1]), F.Z(r.c[2])], axis: r.axis, radius: F.m(r.R), hubRadius: F.m(r.hub), blades: r.blades, chord: F.m(r.chord), taper: r.taper ?? 0.7, pitchDeg: r.pitch ?? 8, rate: r.rate, tone: 2, tc: 0.08 }));
   for (const p of o.extra || []) parts.push(typeof p === 'function' ? p(F) : p);
-  return parts;
-}
-
-/* ------------------------------------------------------------------ factory: ô tô (xe con, xe đua kín) */
-function car(o) {
-  const F = frame(o.s, -o.L / 2, -o.H / 2, o.L, o.k), parts = [];
-  parts.push(solid(F, o.lower, { id: 'body', role: 'body', n: o.n ?? 4, creases: o.lowerCreases }));
-  if (o.house) parts.push(solid(F, o.house, { id: 'cabin', role: 'body', n: 3, rk: o.houseRk, toneFn: (x, y, z, nx, ny) => (ny > 0.9 ? 0 : 2) }));
-  const w = o.wheels;
-  for (const [i, x] of [w.xf, w.xr].entries()) for (const sz of [-1, 1]) parts.push(wheel(F, `wheel_${i ? 'r' : 'f'}${sz < 0 ? 'L' : 'R'}`, x, w.R, sz * w.z, w.R, w.w));
-  for (const b of o.boxes || []) parts.push(box(F, b));
-  for (const c of o.canopy || []) parts.push(canopy(F, c));
-  for (const q of o.extra || []) parts.push(q(F));
-  return parts;
-}
-const mirrorsAt = (x, y, z) => [{ id: 'mirror_L', size: [0.2, 0.11, 0.2], c: [x, y, -z], r: 0.04, tone: 1 }, { id: 'mirror_R', size: [0.2, 0.11, 0.2], c: [x, y, z], r: 0.04, tone: 1 }];
-
-/* ------------------------------------------------------------------ factory: xe tải */
-function truck(o) {
-  const F = frame(o.s, -o.L / 2, -o.H / 2, o.L, 1), parts = [];
-  parts.push(solid(F, o.cab, { id: 'cab', role: 'body', n: 4, creases: [0.04 * 2], toneFn: (x, y, z, nx, ny, nz) => ((nx < -0.45 && ny < 0.6 && y > F.Y(1.5)) || (Math.abs(nz) > 0.6 && y > F.Y(1.9) && x < F.X(1.6)) ? 2 : 0) }));
-  parts.push(box(F, { id: 'box', role: 'body', size: [o.box.len, o.box.h, o.box.w], c: [o.box.x + o.box.len / 2, o.box.y + o.box.h / 2, 0], r: 0.1, tone: 0 }));
-  parts.push(box(F, { id: 'chassis', size: [o.L - 1.0, 0.28, 1.3], c: [o.L / 2 + 0.3, 0.8, 0], r: 0.04, tone: 2 }));
-  if (o.fairing) parts.push(solid(F, o.fairing, { id: 'roof_fairing', role: 'detail', n: 4, tone: 1, rk: 0.7 }));
-  for (const [i, ax] of o.axles.entries()) for (const sz of [-1, 1]) for (const zz of ax.z) parts.push(wheel(F, `wheel_${i}_${sz < 0 ? 'L' : 'R'}${zz > 0.9 ? 'o' : 'i'}`, ax.x, o.R, sz * zz, o.R, 0.3));
-  parts.push(box(F, { id: 'bumper', size: [0.25, 0.3, 2.3], c: [0.05, 0.62, 0], r: 0.08, tone: 1 }));
   return parts;
 }
 
@@ -232,39 +205,105 @@ function raceF1() { // 1:4, bánh hở, cánh trước + cánh sau
   P.push(box(F, { id: 'pylon_r', size: [0.2, 0.55, 0.06], c: [5.2, 0.7, 0], r: 0.02, tone: 1 }));
   return P;
 }
-function raceProto() { // 1:4, thân kín, buồng lái kính, đuôi đứng + cánh sau
-  return car({ s: 0.25, L: 4.75, H: 1.2, n: 3.2,
-    lower: [[0, 0.42, 0.16, 1.1], [0.15, 0.52, 0.12, 1.55], [0.8, 0.62, 0.1, 1.9], [1.6, 0.7, 0.1, 1.95], [2.2, 0.75, 0.1, 1.9], [3.4, 0.78, 0.1, 1.85], [4.1, 0.7, 0.1, 1.55], [4.6, 0.55, 0.12, 1.0], [4.75, 0.48, 0.2, 0.7]],
-    wheels: { xf: 1.0, xr: 3.75, R: 0.35, w: 0.32, z: 0.88 },
-    canopy: [{ x: 1.65, len: 1.7, w: 0.95, h: 0.62, y: 0.78, peak: 0.42 }],
-    extra: [
-      F => fin(F, { x: 3.2, y: 0.7, h: 0.3, cr: 1.5, ct: 0.5, sweep: 55, tone: 1 }),
-      F => wing(F, { id: 'wing_r', role: 'wing', x: 4.25, y: 1.0, span: 1.5, cr: 0.5, profile: '0012', tc: 0.1, inc: -8, tone: 1 }),
-      F => box(F, { id: 'endplate_rL', size: [0.6, 0.32, 0.03], c: [4.5, 0.98, -0.75], r: 0.01, tone: 1 }),
-      F => box(F, { id: 'endplate_rR', size: [0.6, 0.32, 0.03], c: [4.5, 0.98, 0.75], r: 0.01, tone: 1 }),
-      F => box(F, { id: 'splitter', size: [0.5, 0.04, 1.5], c: [0.15, 0.14, 0], r: 0.01, tone: 2 })] });
+/* ---- xe con: thân hull (đường nóc, vai, đáy, nửa bề rộng), vòm bánh, kính, đèn, gương */
+const trimLow = (xf, xr, hi, lo) => x => lo + (hi - lo) * Math.max(sstep((xf - x) / 0.45), sstep((x - xr) / 0.45));
+function sedanLike(o) {
+  const F = frame(0.25, -o.L / 2, -o.H / 2, o.L, o.k ?? 0.88), P = [];
+  const arches = [{ x: o.xf, y: o.R, R: o.Ra }, { x: o.xr, y: o.R, R: o.Ra }], zi = o.zi ?? 0.62, trim = trimLow(0.4, o.L - 0.4, o.trimHi ?? 0.46, o.trimLo ?? 0.27);
+  const tf = archTone(arches, zi, trim);
+  const hull = carHull(F, { L: o.L, top: o.top, belt: o.belt, floor: o.floor, half: o.half, arches, zi, ledge: o.ledge, tumble: o.tumble, tuck: o.tuck, endF: o.endF, endR: o.endR, n: o.n ?? 96, toneFn: tf });
+  P.push(hull);
+  for (const [i, x] of [o.xf, o.xr].entries()) for (const sz of [-1, 1]) P.push(wheel(F, `wheel_${i ? 'r' : 'f'}${sz < 0 ? 'L' : 'R'}`, x, o.R, sz * o.track, o.R, o.ww, { rim: o.rim ?? 0.68, spokes: o.spokes ?? 5 }));
+  const G = (dir, corners, extra = {}) => P.push(panel(F, hull, { dir, corners, ...extra }));
+  G([0, -1, 0], o.windshield); if (o.backlight) G([0, -1, 0], o.backlight); if (o.rearGlass) G([-1, 0, 0], o.rearGlass, { round: 4 });
+  for (const q of o.sideGlass) G([0, 0, -1], q, { mirror: true });
+  for (const [x, y0, y1] of o.shut || []) G([0, 0, -1], [[x - 0.007, y0], [x + 0.007, y0], [x + 0.007, y1], [x - 0.007, y1]], { mirror: true, tone: 2, round: 2, res: [2, 14], off: 0.0005 });
+  for (const [x, y] of o.handles || []) G([0, 0, -1], [[x - 0.09, y], [x + 0.09, y], [x + 0.09, y + 0.03], [x - 0.09, y + 0.03]], { mirror: true, tone: 6, round: 4, res: [6, 2], off: 0.0009 });
+  for (const q of o.lamps || []) G([1, 0, 0], q, { mirror: true, tone: 4, round: 3 });
+  for (const q of o.tails || []) G([-1, 0, 0], q, { mirror: true, tone: 5, round: 3 });
+  for (const q of o.grilles || []) G([1, 0, 0], q, { tone: 2, round: 4 });
+  for (const m of o.mirrors || []) for (const sz of [-1, 1]) P.push(blob(F, { id: 'mirror_' + (sz < 0 ? 'L' : 'R'), x: m.x, y: m.y, z: sz * m.z, len: 0.2, w: 0.12, h: 0.11, tone: 0 }));
+  if (o.rails) for (const sz of [-1, 1]) P.push(tube(F, { id: 'rail_' + (sz < 0 ? 'L' : 'R'), path: o.rails.map(q => [q[0], q[1], sz * q[2]]), r: 0.017, tone: 6, sides: 8 }));
+  P.palette = o.palette; return P;
+}
+function raceProto() { // 1:4, thân kín kiểu nguyên mẫu Le Mans: buồng lái kính, vây lưng, cánh sau
+  const F = frame(0.25, -4.75 / 2, -1.2 / 2, 4.75, 0.9), P = [];
+  const arches = [{ x: 1.0, y: 0.35, R: 0.43 }, { x: 3.75, y: 0.35, R: 0.43 }], zi = 0.7, tf = archTone(arches, zi, trimLow(0.4, 4.35, 0.3, 0.16));
+  const hull = carHull(F, { L: 4.75, endF: 0.28, endR: 0.2, arches, zi, ledge: 0.2, tumble: 0.32, tuck: 0.03, roofR: 0.12, gh0: 0.12, gh1: 0.3, n: 130, toneFn: tf,
+    top: [[0, 0.34], [0.4, 0.42], [1.0, 0.58], [1.5, 0.66], [1.95, 0.86], [2.35, 1.04], [2.85, 1.1], [3.3, 1.02], [3.8, 0.86], [4.3, 0.8], [4.75, 0.72]],
+    belt: [[0, 0.28], [1.0, 0.52], [2.0, 0.62], [3.0, 0.7], [4.0, 0.74], [4.75, 0.66]],
+    floor: [[0, 0.16], [0.35, 0.11], [1, 0.1], [3.8, 0.1], [4.3, 0.19], [4.75, 0.3]],
+    half: [[0, 0.5], [0.5, 0.85], [1.0, 1.04], [1.9, 0.9], [2.6, 0.86], [3.3, 0.95], [3.75, 1.04], [4.3, 0.95], [4.75, 0.6]] });
+  P.push(hull);
+  for (const [i, x] of [1.0, 3.75].entries()) for (const sz of [-1, 1]) P.push(wheel(F, `wheel_${i ? 'r' : 'f'}${sz < 0 ? 'L' : 'R'}`, x, 0.35, sz * 0.88, 0.35, 0.32, { rim: 0.62, spokes: 6, rimTone: 1 }));
+  P.push(panel(F, hull, { dir: [0, -1, 0], corners: [[2.0, -0.4], [3.35, -0.36], [3.35, 0.36], [2.0, 0.4]], round: 3 }));
+  P.push(panel(F, hull, { dir: [0, 0, -1], mirror: true, corners: [[2.1, 0.86], [3.2, 0.86], [3.05, 1.0], [2.3, 1.0]], round: 3 }));
+  P.push(panel(F, hull, { dir: [1, 0, 0], mirror: true, tone: 4, round: 3, corners: [[0.3, 0.45], [0.3, 0.85], [0.42, 0.8], [0.42, 0.5]] }));
+  P.push(panel(F, hull, { dir: [-1, 0, 0], mirror: true, tone: 5, round: 3, corners: [[0.52, 0.45], [0.52, 0.85], [0.62, 0.8], [0.62, 0.5]] }));
+  P.push(fin(F, { x: 3.2, y: 0.7, h: 0.3, cr: 1.5, ct: 0.5, sweep: 55, tone: 0 }));
+  P.push(wing(F, { id: 'wing_r', role: 'wing', x: 4.25, y: 1.0, span: 1.5, cr: 0.5, profile: '0012', tc: 0.1, inc: -8, tone: 1 }));
+  for (const sz of [-1, 1]) P.push(box(F, { id: 'endplate_r' + (sz < 0 ? 'L' : 'R'), size: [0.6, 0.32, 0.03], c: [4.5, 0.98, sz * 0.75], r: 0.01, tone: 1 }));
+  P.push(box(F, { id: 'splitter', size: [0.5, 0.04, 1.6], c: [0.2, 0.1, 0], r: 0.01, tone: 2 }));
+  P.palette = { 0: 0x1F4A3A, 1: 0xB5BAC0 }; return P;
 }
 
 /* ---- xe con */
-function carSedan() { // 1:4, ba khoang: nắp ca-pô, khoang lái, cốp
-  return car({ s: 0.25, L: 4.85, H: 1.5, k: 0.88,
-    lower: [[0, 0.7, 0.4, 1.5], [0.1, 0.78, 0.34, 1.7], [0.5, 0.86, 0.3, 1.8], [1.2, 0.9, 0.3, 1.84], [1.7, 0.95, 0.3, 1.84], [2.8, 0.98, 0.3, 1.84], [4.2, 0.99, 0.3, 1.82], [4.6, 0.96, 0.34, 1.74], [4.85, 0.9, 0.42, 1.55]],
-    house: [[1.5, 0.97, 0.9, 1.55], [1.95, 1.2, 0.9, 1.52], [2.45, 1.4, 0.9, 1.48], [2.9, 1.45, 0.9, 1.46], [3.4, 1.43, 0.9, 1.44], [3.75, 1.3, 0.9, 1.46], [4.0, 1.02, 0.9, 1.52]],
-    wheels: { xf: 1.0, xr: 3.8, R: 0.31, w: 0.2, z: 0.88 }, boxes: mirrorsAt(1.95, 1.04, 0.99) });
+function carSedan() { // 1:4, ba khoang
+  return sedanLike({ L: 4.85, H: 1.5, xf: 1.0, xr: 3.85, R: 0.33, Ra: 0.38, ww: 0.225, track: 0.78,
+    top: [[0, 0.8], [0.3, 0.85], [0.8, 0.92], [1.25, 0.98], [1.5, 1.12], [1.85, 1.33], [2.15, 1.42], [2.6, 1.455], [3.1, 1.45], [3.5, 1.4], [3.85, 1.28], [4.1, 1.08], [4.3, 1.02], [4.6, 1.02], [4.85, 0.98]],
+    belt: [[0, 0.74], [0.6, 0.82], [1.2, 0.92], [2.0, 0.97], [3.0, 0.99], [4.0, 1.0], [4.5, 1.0], [4.85, 0.95]],
+    floor: [[0, 0.32], [0.4, 0.21], [1.0, 0.16], [3.8, 0.16], [4.5, 0.24], [4.85, 0.34]],
+    half: [[0, 0.64], [0.5, 0.85], [1.0, 0.905], [2.5, 0.915], [3.8, 0.9], [4.4, 0.85], [4.85, 0.7]],
+    windshield: [[1.33, -0.6], [2.12, -0.5], [2.12, 0.5], [1.33, 0.6]], backlight: [[3.55, -0.5], [4.08, -0.55], [4.08, 0.55], [3.55, 0.5]],
+    shut: [[1.74, 0.3, 0.97], [2.7, 0.3, 0.98], [3.6, 0.3, 0.99]], handles: [[2.3, 0.88], [3.15, 0.89]],
+    sideGlass: [[[1.66, 1.015], [2.66, 1.015], [2.66, 1.385], [2.03, 1.37]], [[2.78, 1.015], [3.5, 1.02], [3.3, 1.33], [2.78, 1.385]]],
+    lamps: [[[0.64, 0.44], [0.64, 0.82], [0.73, 0.8], [0.74, 0.5]]], tails: [[[0.86, 0.52], [0.86, 0.86], [0.97, 0.84], [0.97, 0.55]]], grilles: [[[0.5, -0.36], [0.5, 0.36], [0.62, 0.32], [0.62, -0.32]], [[0.33, -0.5], [0.33, 0.5], [0.43, 0.46], [0.43, -0.46]]],
+    mirrors: [{ x: 2.0, y: 1.03, z: 0.99 }], palette: { 0: 0x34475E, 1: 0xB5BAC0 } });
 }
-function carSuv() { // 1:4, cao hơn, mui kéo dài về đuôi thẳng đứng, gầm cao
-  return car({ s: 0.25, L: 4.75, H: 1.77, k: 0.9, houseRk: 0.72,
-    lower: [[0, 0.78, 0.5, 1.6], [0.1, 0.92, 0.42, 1.8], [0.5, 1.0, 0.38, 1.9], [1.2, 1.05, 0.34, 1.92], [1.8, 1.08, 0.34, 1.92], [3.0, 1.1, 0.34, 1.92], [4.4, 1.1, 0.36, 1.9], [4.65, 1.05, 0.44, 1.84], [4.75, 0.98, 0.5, 1.76]],
-    house: [[1.6, 1.08, 1.0, 1.6], [2.0, 1.4, 1.0, 1.62], [2.5, 1.7, 1.0, 1.6], [3.0, 1.76, 1.0, 1.58], [4.0, 1.76, 1.0, 1.58], [4.3, 1.74, 1.0, 1.58], [4.55, 1.52, 1.0, 1.56], [4.7, 1.22, 1.0, 1.5], [4.75, 1.04, 1.0, 1.3]],
-    wheels: { xf: 1.05, xr: 3.75, R: 0.37, w: 0.245, z: 0.93 }, boxes: mirrorsAt(2.0, 1.2, 1.03) });
+function carSuv() { // 1:4, cao hơn, đuôi thẳng đứng, gầm cao, giá nóc
+  return sedanLike({ L: 4.75, H: 1.77, k: 0.9, xf: 1.05, xr: 3.75, R: 0.37, Ra: 0.43, ww: 0.245, track: 0.83, ledge: 0.15, tumble: 0.2, trimHi: 0.62, trimLo: 0.36, zi: 0.66,
+    top: [[0, 0.98], [0.4, 1.05], [1.0, 1.12], [1.6, 1.17], [2.0, 1.45], [2.4, 1.72], [2.8, 1.77], [4.25, 1.77], [4.55, 1.7], [4.68, 1.4], [4.75, 1.12]],
+    belt: [[0, 0.92], [1.0, 1.08], [2.0, 1.12], [4.2, 1.14], [4.75, 1.1]],
+    floor: [[0, 0.5], [0.4, 0.38], [1.05, 0.3], [3.75, 0.3], [4.5, 0.36], [4.75, 0.46]],
+    half: [[0, 0.7], [0.5, 0.9], [1.0, 0.955], [2.5, 0.96], [4.0, 0.95], [4.5, 0.9], [4.75, 0.76]],
+    windshield: [[1.62, -0.6], [2.36, -0.58], [2.36, 0.58], [1.62, 0.6]],     shut: [[1.95, 0.4, 1.12], [2.95, 0.4, 1.13], [3.95, 0.4, 1.14]], handles: [[2.45, 0.98], [3.4, 0.99]], rearGlass: [[1.2, -0.58], [1.2, 0.58], [1.66, 0.55], [1.66, -0.55]],
+    sideGlass: [[[1.95, 1.17], [2.9, 1.17], [2.9, 1.69], [2.4, 1.69]], [[3.0, 1.17], [3.9, 1.17], [3.9, 1.69], [3.0, 1.69]], [[4.0, 1.17], [4.5, 1.17], [4.42, 1.64], [4.0, 1.69]]],
+    lamps: [[[0.84, 0.5], [0.84, 0.88], [0.95, 0.86], [0.95, 0.56]]], tails: [[[1.18, 0.74], [1.18, 0.9], [1.5, 0.88], [1.5, 0.76]]], grilles: [[[0.66, -0.4], [0.66, 0.4], [0.82, 0.36], [0.82, -0.36]], [[0.5, -0.5], [0.5, 0.5], [0.6, 0.46], [0.6, -0.46]]],
+    mirrors: [{ x: 2.05, y: 1.22, z: 1.04 }], rails: [[2.3, 1.82, 0.56], [3.3, 1.82, 0.56], [4.3, 1.82, 0.56]], palette: { 0: 0x45594A, 1: 0xB5BAC0 } });
 }
 
-/* ---- xe tải (1:7) */
-const cabRows = [[0, 2.3, 0.45, 2.3], [0.05, 2.6, 0.4, 2.42], [0.4, 2.98, 0.4, 2.45], [1.9, 3.0, 0.4, 2.45]];
-function truckBox() { return truck({ s: 1 / 7, L: 7.6, H: 3.5, R: 0.5, cab: cabRows, box: { x: 2.1, y: 1.15, len: 5.5, h: 2.35, w: 2.45 }, axles: [{ x: 1.0, z: [1.05] }, { x: 6.0, z: [1.05, 0.7] }] }); }
+/* ---- xe tải (1:7): cabin hull đầu bằng + thùng + khung gầm + bánh đôi */
+function truck(o) {
+  const F = frame(1 / 7, -3.8, -1.75, 7.6, 1), P = [], CL = 2.1;
+  const arches = [{ x: 1.0, y: 0.5, R: 0.57 }], zi = 0.8, tf = archTone(arches, zi, x => 0.62 + 0.0 * x);
+  const cab = carHull(F, { id: 'cab', L: CL, endF: 0.14, endR: 0.05, arches, zi, ledge: 0.03, tumble: 0.05, tuck: 0.02, roofR: 0.12, gh0: 0.08, gh1: 0.3, hoodR: 0.1, n: 64, toneFn: tf,
+    top: [[0, 1.8], [0.05, 2.2], [0.12, 2.7], [0.25, 3.0], [0.5, 3.1], [2.1, 3.12]], belt: [[0, 1.72], [2.1, 1.78]], floor: [[0, 0.56], [2.1, 0.62]], half: [[0, 1.12], [0.14, 1.22], [2.1, 1.25]] });
+  P.push(cab);
+  P.push(box(F, { id: 'box', role: 'body', size: [o.box.len, o.box.h, o.box.w], c: [o.box.x + o.box.len / 2, o.box.y + o.box.h / 2, 0], r: 0.1, tone: 7, e: 1.5 }));
+  P.push(box(F, { id: 'box_skirt', size: [o.box.len - 0.6, 0.18, o.box.w - 0.08], c: [o.box.x + o.box.len / 2, o.box.y - 0.04, 0], r: 0.04, tone: 2, e: 4 }));
+  P.push(box(F, { id: 'chassis', size: [o.L - 1.0, 0.28, 1.3], c: [o.L / 2 + 0.3, 0.8, 0], r: 0.04, tone: 2, e: 4 }));
+  if (o.fairing) P.push(solid(F, o.fairing, { id: 'roof_fairing', role: 'detail', n: 4, tone: 0, rk: 0.7 }));
+  for (const [i, ax] of o.axles.entries()) for (const sz of [-1, 1]) for (const zz of ax.z) P.push(wheel(F, `wheel_${i}_${sz < 0 ? 'L' : 'R'}${zz > 0.9 ? 'o' : 'i'}`, ax.x, o.R, sz * zz, o.R, 0.3, { rim: 0.6, spokes: 8, rate: 18 }));
+  P.push(box(F, { id: 'bumper', size: [0.25, 0.3, 2.3], c: [0.05, 0.62, 0], r: 0.08, tone: 2 }));
+  const G = (dir, corners, ex = {}) => P.push(panel(F, cab, { dir, corners, ...ex }));
+  G([1, 0, 0], [[1.98, -1.04], [1.98, 1.04], [2.92, 1.0], [2.92, -1.0]], { round: 4 });
+  G([0, 0, -1], [[0.32, 1.95], [1.42, 1.95], [1.42, 2.88], [0.42, 2.88]], { mirror: true, round: 4 });
+  G([0, 0, -1], [[1.5 - 0.007, 0.7], [1.5 + 0.007, 0.7], [1.5 + 0.007, 1.9], [1.5 - 0.007, 1.9]], { mirror: true, tone: 2, round: 2, res: [2, 14], off: 0.0005 });
+  G([1, 0, 0], [[0.95, 0.66], [0.95, 1.1], [1.15, 1.08], [1.15, 0.7]], { mirror: true, tone: 4, round: 3 });
+  G([1, 0, 0], [[0.88, -0.55], [0.88, 0.55], [1.6, 0.52], [1.6, -0.52]], { tone: 2, round: 6 });
+  for (const sz of [-1, 1]) {
+    P.push(strut(F, { id: 'mirror_arm_' + sz, a: [0.5, 2.2, sz * 1.22], b: [0.35, 2.4, sz * 1.5], wa: [0.06, 0.06], tone: 2 }));
+    P.push(box(F, { id: 'mirror_' + (sz < 0 ? 'L' : 'R'), size: [0.12, 0.55, 0.2], c: [0.33, 2.5, sz * 1.55], r: 0.04, tone: 2 }));
+    P.push(tube(F, { id: 'stack_' + (sz < 0 ? 'L' : 'R'), path: [[2.22, 0.9, sz * 1.18], [2.22, 3.05, sz * 1.18]], r: 0.065, tone: 6, sides: 10 }));
+    P.push(box(F, { id: 'tank_' + (sz < 0 ? 'L' : 'R'), size: [0.9, 0.5, 0.5], c: [2.9, 0.68, sz * 0.9], r: 0.2, tone: 6 }));
+  }
+  P.palette = { 0: 0x2F4A66, 1: 0xB5BAC0, 7: 0xE3E1DA }; return P;
+}
+const cabRows = null;
+function truckBox() { return truck({ L: 7.6, R: 0.5, box: { x: 2.1, y: 1.15, len: 5.5, h: 2.35, w: 2.45 }, axles: [{ x: 1.0, z: [1.05] }, { x: 6.0, z: [1.05, 0.7] }] }); }
 function truckFairing() {
-  return truck({ s: 1 / 7, L: 7.6, H: 3.5, R: 0.5, cab: cabRows, box: { x: 2.1, y: 1.15, len: 5.5, h: 2.35, w: 2.45 }, axles: [{ x: 1.0, z: [1.05] }, { x: 6.0, z: [1.05, 0.7] }],
-    fairing: [[0.6, 2.99, 2.9, 2.0], [1.2, 3.08, 2.9, 2.3], [1.7, 3.3, 2.9, 2.4], [2.1, 3.5, 2.9, 2.42], [2.2, 3.5, 2.9, 2.42]] });
+  return truck({ L: 7.6, R: 0.5, box: { x: 2.1, y: 1.15, len: 5.5, h: 2.35, w: 2.45 }, axles: [{ x: 1.0, z: [1.05] }, { x: 6.0, z: [1.05, 0.7] }],
+    fairing: [[0.6, 3.1, 3.0, 2.0], [1.2, 3.18, 3.0, 2.3], [1.7, 3.35, 3.0, 2.4], [2.1, 3.5, 3.0, 2.42], [2.2, 3.5, 3.0, 2.42]] });
 }
 
 /* ---- hình học */

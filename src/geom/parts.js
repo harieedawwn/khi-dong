@@ -6,11 +6,14 @@
 //          stays <= 1.5 % of ref). Pass the whole-model length when parts belong to a bigger model.
 //          Default: shapes -> own length; lofts -> max(own length, 0.8); wheels/fins/rotors/wings -> 1.0; spanning -> chord.
 //   edge = explicit quad side in m (overrides ref).
-// Kinds: loft nose body tail canopy nacelle wing fin wheel rotor roundedBox box sphere cylinder plate rhombus teardrop
+// Kinds: loft nose body tail canopy nacelle wing fin rotor roundedBox box sphere cylinder plate rhombus teardrop
+//        + hull panel strut tube revolve wheel (src/geom/hull.js)
 // Profiles (arrays of [t,value], numbers or functions of t in 0..1) use a smooth monotone cubic interpolation.
 // Documented deviations: spanning parts (z -1.2..1.2) use only ~12 segments along z because they are constant along z;
 // their wall-side caps are coarse fans (hidden behind the glass). wing.sweepDeg is the QUARTER-CHORD sweep (deg).
 import { BufferGeometry, Float32BufferAttribute, Uint32BufferAttribute } from 'three';
+import { createHullMakers, stationList, ringFromControl } from './hull.js';
+export { stationList, ringFromControl };
 
 const PI = Math.PI, TAU = PI * 2, EK = 0.0105;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -427,14 +430,14 @@ function finish(kind, role, mb, sdf, p, extra = {}) {
   const P = mb.P, N = mb.N, I = mb.I; let vol = 0;
   for (let k = 0; k < I.length; k += 3) { const a = I[k] * 3, b = I[k + 1] * 3, c = I[k + 2] * 3;
     vol += (P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1]) - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c]) + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c])) / 6; }
-  if (vol < 0) { for (let k = 0; k < I.length; k += 3) { const t = I[k + 1]; I[k + 1] = I[k + 2]; I[k + 2] = t; } for (let i = 0; i < N.length; i++) N[i] = -N[i]; }
+  if (vol < 0 && !p.decal) { for (let k = 0; k < I.length; k += 3) { const t = I[k + 1]; I[k + 1] = I[k + 2]; I[k + 2] = t; } for (let i = 0; i < N.length; i++) N[i] = -N[i]; }
   if (typeof p.toneFn === 'function') for (let i = 0; i < P.length / 3; i++) mb.T[i] = p.toneFn(P[3 * i], P[3 * i + 1], P[3 * i + 2], N[3 * i], N[3 * i + 1], N[3 * i + 2]);
   const g = new BufferGeometry();
   g.setAttribute('position', new Float32BufferAttribute(new Float32Array(P), 3));
   g.setAttribute('normal', new Float32BufferAttribute(new Float32Array(N), 3));
   g.setAttribute('tone', new Float32BufferAttribute(new Float32Array(mb.T), 1));
   g.setIndex(new Uint32BufferAttribute(new Uint32Array(I), 1));
-  return { id: p.id ?? `${kind}_${++UID}`, kind, role: p.role ?? role, geometry: g, sdf, flow: p.flow ?? (role !== 'rotor'), ...extra };
+  return { id: p.id ?? `${kind}_${++UID}`, kind, role: p.role ?? role, geometry: g, sdf, flow: p.flow ?? (role !== 'rotor'), decal: !!p.decal, ...extra };
 }
 
 /* ---------------------------------------------------------------- makers */
@@ -471,22 +474,6 @@ const MAKERS = {
     const mb = new MB(); mb.tone = p.tone ?? 0; boxMesh(mb, h[0], h[1], h[2], r, edge, c); return finish('roundedBox', p.role ?? 'detail', mb, boxSDF(c, h, r), p);
   },
   box: p => MAKERS.roundedBox({ ...p, radius: 0 }),
-  wheel: p => {
-    const R = p.radius ?? 0.07, W = p.width ?? 0.05, w = W / 2, c = p.center ?? [0, 0, 0], ref = p.ref ?? 1.0, edge = p.edge ?? EK * ref, rr = 0.64 * R, cr = Math.min(0.3 * w + 0.02 * R, 0.25 * R);
-    const tireHalf = [[rr, w], [R - cr, w]];
-    for (let i = 1; i <= 8; i++) { const a = (PI / 2) * (i / 8); tireHalf.push([R - cr + cr * Math.sin(a), w - cr + cr * Math.cos(a)]); }
-    tireHalf.push([R, 0]);
-    const tireChain = [...tireHalf, ...tireHalf.slice(0, -1).reverse().map(q => [q[0], -q[1]])];
-    const rimF = [[0, 0.5 * w], [0.14 * R, 0.5 * w]], rimS1 = [[0.14 * R, 0.5 * w], [0.14 * R, 0.28 * w]], rimD = [[0.14 * R, 0.28 * w], [rr - 0.02 * R, 0.28 * w]], rimL = [[rr - 0.02 * R, 0.28 * w], [rr, 0.62 * w]], bead = [[rr, 0.62 * w], [rr, w]];
-    const mir = ch => ch.map(q => [q[0], -q[1]]), chains = [];
-    for (const ch of [rimF, rimS1, rimD, rimL]) { chains.push({ pts: ch, tone: 1, sgn: rimS1 === ch ? -1 : -1 }); chains.push({ pts: mir(ch), tone: 1, sgn: 1 }); }
-    chains.push({ pts: bead, tone: 2, sgn: -1 }); chains.push({ pts: mir(bead), tone: 2, sgn: 1 });
-    chains.push({ pts: tireChain, tone: 2, sgn: -1 });
-    const mb = new MB(); latheMesh(mb, { origin: c, axis: [0, 0, 1], chains, edge });
-    const sdf = (x, y, z) => { const rho = Math.hypot(x - c[0], y - c[1]), az = Math.abs(z - c[2]), qx = rho - (R - cr), qy = az - (w - cr);
-      const dr = Math.min(Math.max(qx, qy), 0) + Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - cr, cut = Math.max(rho - (rr - 0.02 * R), 0.14 * R - rho, 0.28 * w - az); return Math.max(dr, -cut); };
-    return finish('wheel', p.role ?? 'wheel', mb, sdf, p, { spin: p.spin });
-  },
   rotor: p => {
     const c = p.center ?? [0, 0, 0], ax = (p.axis ?? [0, 1, 0]), al = Math.hypot(...ax), a = ax.map(v => v / al), R = p.radius ?? 0.3, hubR = p.hubRadius ?? 0.03, nb = p.blades ?? 2, chord = p.chord ?? 0.04;
     let u = Math.abs(a[0]) < 0.9 ? [0, -a[2], a[1]] : [a[2], 0, -a[0]]; const ul = Math.hypot(...u); u = u.map(v => v / ul);
@@ -525,6 +512,8 @@ const MAKERS = {
     return buildLoft({ ...p, length: L, x0: -L / 2, radius: t => k * Math.sqrt(Math.max(0, t)) * Math.pow(Math.max(0, 1 - t), 1.5), ref: p.ref ?? L }, 'shape');
   },
 };
+
+Object.assign(MAKERS, createHullMakers({ MB, zip, discRings, latheMesh, finish, EK }));
 
 export function make(kind, params = {}) {
   const f = MAKERS[kind]; if (!f) throw new Error('parts.make: unknown kind ' + kind);

@@ -1,15 +1,29 @@
-# PROGRESS — nhánh nang-cap-dong-chay (đọc CLAUDE.md trước)
+# PROGRESS — nâng cấp mô hình, giao diện, ảnh thu nhỏ (đọc CLAUDE.md trước; "Đọc PROGRESS.md và làm tiếp")
 
-- [x] 1. Khói trắng phủ kín: `renderer.clear()` xoá dye bằng màu nền alpha 1 (lỗi thật, không phải SwiftShader) — lbm-gpu.js
-- [x] 2. Không có xoáy Kármán trên GPU: (a) đọc vận tốc bằng fence không trả về → v_y = 0 đúng; (b) khung 2 s làm mô phỏng chậm 40 lần. Đã thay bằng vòng PBO + fence, đọc trực tiếp khi không có fence; dt tối đa 0,1 s
-- [x] 3. Tốc độ nhìn thấy k đổi mượt (hằng số thời gian 0,9 s), không nhảy khi bộ điều tốc đổi mức
-- [x] 4. Test chập chờn: ngưỡng thời gian thực (bake < 400 ms, 1,5 M mẫu/s) bị nhiễu khi các tệp test chạy song song -> chạy tuần tự + lấy tốt nhất trong 3 lần
-- [x] 5. Bảng NACA đối chiếu: 0012 theo Sheldahl & Klimas Table 2 (OSTI 6548367); 2412 đọc từ đồ thị NACA Report 824 tr.136 (không có bảng số in) — xem đầu sections.js
-- [x] St: trụ 0,21, cầu 0,215, tấm 0,21 (Re bộ giải 800 cho vật cạnh sắc) ở mức 0; ở mức bộ giải 4 tấm phẳng 0,24; giọt nước và cánh 2412 4° không xoáy; cánh 18° tách và xoáy
-- [x] Khói sợi mảnh mềm (smoke.js shader + nozzle sigma)
-- [x] Bộ điều chất lượng src/quality.js (13 bậc) + scene.setQuality; hình học tuần tạo nhẹ; ảnh thu nhỏ từng khung rảnh; watchdog không gây lỗi nghiêm trọng, chỉ hiện thông báo "Chế độ nhẹ" sau 3 lần treo > 4 s
-- [x] Đo (Chromium SwiftShader 1000x640, bậc 12): 20 fps có giao diện DOM, tác vụ dài ~50-60 ms (một lần đọc đồng bộ 1 điểm ảnh ~30 ms là chi phí cố định của GPU phần mềm); 33 fps và 1 tác vụ dài khi ẩn giao diện. Muốn hết tác vụ > 50 ms cần giảm chi phí hợp thành giao diện DOM (phiên giao diện)
-- [x] Firefox cài được qua Playwright nhưng không tạo được WebGL trong container (FEATURE_FAILURE_WEBGL_EXHAUSTED_DRIVERS): chưa đo được fps Firefox; đã sửa nguyên nhân thật của thông báo treo (Boot.loop không được gọi, resume đặt lastTick)
-- [ ] Tác vụ > 50 ms còn lại ~50-60 ms (chờ GPU) với giao diện DOM; không có khi ẩn giao diện
-- [x] Bảng ảnh docs/contact-sheet.png
-- [ ] Gộp vào main, kiểm tra trang Pages
+Phiên này được phép sửa src/geom/ và bố cục giao diện (yêu cầu của giáo viên ghi đè dòng "không đụng" trong CLAUDE.md).
+Công cụ mới: `tools/look.mjs` (ảnh kiểm tra nhiều hướng nhìn, không cần ống gió), `tools/meshcheck.mjs [id] [--sdf]` (kín nước + sdf), `tools/modelstats.mjs` (số đỉnh, CD@20), `tools/partstats.mjs id`.
+Đối chiếu CD: `stats0` gốc (23 mô hình, CD@20 m/s): rocket_water .476, sounding .348, launcher .408, capsule 1.143, airliner .025, fighter .018, glider .019, prop .032, heli .544, wing .007/.008/.005, f1 .896, proto .453, sedan .292, suv .382, truck_box .75, truck_fairing .6, sphere .159, cyl 1.053, plate 1.17, rhombus .501, teardrop .054. Bảng in của physics.test không đổi (dùng info tay).
+
+## 1. Mô hình (src/geom/parts.js, hull.js, kit.js, library.js, assemble.js)
+- [x] Nền: hull (tiết diện B-spline, sdf nội suy), panel (kính/đèn chiếu lên bề mặt, decal không tính diện tích), strut, tube, revolve, wheel (lốp + vành + nan hoa + đĩa); assemble có bảng màu theo mô hình (parts.palette) + 8 tông + thuộc tính mat (độ nhám/kim loại); modelview + scene dùng makeModelMaterial
+- [x] Xe đường bộ: sedan, SUV, xe tải thùng, xe tải ốp gió, xe đua thể thao (proto)
+- [ ] Máy bay: airliner, fighter, glider, prop
+- [ ] Trực thăng, F1 (halo, sidepod, cánh nhiều tầng)
+- [ ] Tên lửa (cánh biên dạng, vòi phun), khoang tàu; màu sơn cho hình học cơ bản (kích thước SPEC §6 giữ nguyên)
+- [ ] Mọi mô hình <= 40k đỉnh, meshcheck sạch, geom.test + physics.test xanh, bảng CD@20 giống stats0
+- [ ] docs/models-contact-sheet.png
+
+## 2. Ảnh thu nhỏ tĩnh: tools/thumbs.mjs -> assets/thumbs/<id>.webp (<= 8 KB), build.mjs nhúng, picker dùng ảnh
+- [ ] làm
+
+## 3. Tiêu đề: hộp trắng bo tròn giữa trên, tên trường đỏ phải trên, khung số đo ngay dưới; Be Vietnam Pro 800; điện thoại
+- [ ] làm
+
+## 4. Nhìn rõ: bảng bên thu gọn được, dock gọn, tự khớp khung hình + chế độ cận cảnh, ẩn khung + kính ống, tốc độ phát 0,25x-1x + tạm dừng, nhãn mũi tên lực đúng tiếng Việt
+- [ ] làm
+
+## 5. HANDOFF-flow: Áp suất hãm dư p0 − p∞, fShed khi > 0, huy hiệu (khủng hoảng lực cản / thất tốc / sau tới hạn), lời dẫn kịch bản siêu âm, đồ thị theo thời gian đặt lại khi đổi mô hình
+- [ ] làm
+
+## 6. QA Playwright 360x740, 844x390, 768x1024, 1366x768, 1920x1080; cập nhật ACCEPTANCE.md; đẩy main; kiểm tra Pages
+- [ ] làm

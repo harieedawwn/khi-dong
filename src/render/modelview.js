@@ -1,7 +1,7 @@
 // P5 — model view: tone colours, heatmaps, animated swap, spinning parts, force arrows.
 // init(ctx) -> { setModel(model), applyHeatmap(mode, fields), setForces(res), update(dt) }
 import * as THREE from 'three';
-import { ease } from './scene.js';
+import { ease, makeModelMaterial } from './scene.js';
 
 const DEG = Math.PI / 180;
 const TONE_HEX = [0xE9E6DF, 0xB9BEC4, 0x2B2F35];           // SPEC §8 model tones
@@ -55,26 +55,16 @@ export function init(ctx) {
   const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _t = new THREE.Vector3(), _c = new THREE.Vector3();
 
   /* ------------------------------------------------------------ materials */
-  function makeMaterial() {
-    const heat = { value: 0 };
-    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.52, metalness: 0.02, transparent: true, opacity: 1 });
-    m.userData.heat = heat;
-    m.onBeforeCompile = (sh) => {
-      sh.uniforms.uHeat = heat;
-      sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform float uHeat;\nvoid main() {')
-        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * uHeat;');
-    };
-    m.customProgramCacheKey = () => 'p5model-heat';
-    return m;
-  }
-
+  function makeMaterial() { return makeModelMaterial({ value: 0 }); }
+  const matFallback = (n) => { const a = new Float32Array(n * 2); for (let i = 0; i < n; i++) { a[2 * i] = 0.52; a[2 * i + 1] = 0.02; } return new THREE.BufferAttribute(a, 2); };
   /* ------------------------------------------------------------ build view */
   function buildView(model) {
     const src = model.geometry, pos = src.attributes.position, n = pos.count;
     const tone = src.attributes.tone, c0 = src.attributes.color;
     const base = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      if (tone) { const t = TONE[Math.max(0, Math.min(2, Math.round(tone.getX(i))))]; base[3 * i] = t[0]; base[3 * i + 1] = t[1]; base[3 * i + 2] = t[2]; }
+      if (c0) { base[3 * i] = c0.getX(i); base[3 * i + 1] = c0.getY(i); base[3 * i + 2] = c0.getZ(i); }
+      else if (tone) { const t = TONE[Math.max(0, Math.min(2, Math.round(tone.getX(i))))]; base[3 * i] = t[0]; base[3 * i + 1] = t[1]; base[3 * i + 2] = t[2]; }
       else if (c0) { base[3 * i] = c0.getX(i); base[3 * i + 1] = c0.getY(i); base[3 * i + 2] = c0.getZ(i); }
       else { base[3 * i] = TONE[0][0]; base[3 * i + 1] = TONE[0][1]; base[3 * i + 2] = TONE[0][2]; }
     }
@@ -115,7 +105,7 @@ export function init(ctx) {
     const mk = (idx) => {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', pos); if (src.attributes.normal) g.setAttribute('normal', src.attributes.normal);
-      g.setAttribute('color', colAttr); g.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
+      g.setAttribute('color', colAttr); g.setAttribute('aMat', src.attributes.mat || matFallback(n)); g.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
       const m = new THREE.Mesh(g, mat); m.castShadow = true; m.receiveShadow = false; m.layers.enable(1); m.frustumCulled = false;
       geos.push(g); rot.add(m); return m;
     };

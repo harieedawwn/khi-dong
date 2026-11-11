@@ -5,9 +5,14 @@
 // 'color' is LINEAR RGB of SPEC section 8 tones (three treats vertex colors as linear).
 import { BufferGeometry, Float32BufferAttribute, Uint32BufferAttribute } from 'three';
 
-export const TONE_HEX = [0xE9E6DF, 0xB9BEC4, 0x2B2F35];
+// Tông: 0 sơn chính, 1 viền / sơn phụ, 2 đen (lốp, nhựa), 3 kính, 4 đèn trắng, 5 đèn đỏ, 6 crôm / nhôm, 7 sơn phụ thứ hai.
+// parts.palette = {0: 0xRRGGBB, ...} đổi màu theo mô hình (màu sơn thực tế); heatmap vẫn ghi đè màu khi bật.
+export const TONE_HEX = [0xE9E6DF, 0xB9BEC4, 0x2B2F35, 0x161D26, 0xF4F1E6, 0xA3262B, 0xC9CED3, 0xE9E6DF];
+// [độ nhám, kim loại] theo tông
+export const TONE_MAT = [[0.34, 0.22], [0.5, 0.05], [0.82, 0.0], [0.07, 0.75], [0.2, 0.1], [0.25, 0.1], [0.2, 0.95], [0.34, 0.22]];
 const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-export const TONE_RGB = TONE_HEX.map(h => [lin((h >> 16) & 255), lin((h >> 8) & 255), lin(h & 255)]);
+const rgbOf = h => [lin((h >> 16) & 255), lin((h >> 8) & 255), lin(h & 255)];
+export const TONE_RGB = TONE_HEX.map(rgbOf);
 const HIDE = -1.5e-3; // a triangle/sample deeper than this inside another part is hidden
 
 function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -34,18 +39,19 @@ function rasterArea(P, I, tris, a, b) {
 export function assemble(parts) {
   // ---- merge geometry
   let nv = 0, ni = 0; for (const p of parts) { nv += p.geometry.attributes.position.count; ni += p.geometry.index.count; }
-  const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), T = new Float32Array(nv), C = new Float32Array(nv * 3), I = new Uint32Array(ni);
+  const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), T = new Float32Array(nv), C = new Float32Array(nv * 3), I = new Uint32Array(ni), MT = new Float32Array(nv * 2);
+  const pal = TONE_RGB.map((c, i) => (parts.palette && parts.palette[i] != null ? rgbOf(parts.palette[i]) : c));
   const ranges = []; let vo = 0, io = 0;
   for (const p of parts) {
     const g = p.geometry, pa = g.attributes.position.array, na = g.attributes.normal.array, ta = g.attributes.tone.array, ia = g.index.array;
     P.set(pa, vo * 3); N.set(na, vo * 3); T.set(ta, vo);
-    for (let i = 0; i < ta.length; i++) { const c = TONE_RGB[ta[i] | 0] || TONE_RGB[0]; C[(vo + i) * 3] = c[0]; C[(vo + i) * 3 + 1] = c[1]; C[(vo + i) * 3 + 2] = c[2]; }
+    for (let i = 0; i < ta.length; i++) { const t = ta[i] | 0, c = pal[t] || pal[0], m = TONE_MAT[t] || TONE_MAT[0]; C[(vo + i) * 3] = c[0]; C[(vo + i) * 3 + 1] = c[1]; C[(vo + i) * 3 + 2] = c[2]; MT[(vo + i) * 2] = m[0]; MT[(vo + i) * 2 + 1] = m[1]; }
     for (let i = 0; i < ia.length; i++) I[io + i] = ia[i] + vo;
     ranges.push({ v0: vo, v1: vo + ta.length, t0: io / 3, t1: (io + ia.length) / 3 }); vo += ta.length; io += ia.length;
   }
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(P, 3)); geometry.setAttribute('normal', new Float32BufferAttribute(N, 3));
-  geometry.setAttribute('tone', new Float32BufferAttribute(T, 1)); geometry.setAttribute('color', new Float32BufferAttribute(C, 3));
+  geometry.setAttribute('tone', new Float32BufferAttribute(T, 1)); geometry.setAttribute('color', new Float32BufferAttribute(C, 3)); geometry.setAttribute('mat', new Float32BufferAttribute(MT, 2));
   geometry.setIndex(new Uint32BufferAttribute(I, 1)); geometry.computeBoundingSphere();
 
   const sdfs = parts.map(p => p.sdf), sdf = (x, y, z) => { let d = Infinity; for (let i = 0; i < sdfs.length; i++) { const v = sdfs[i](x, y, z); if (v < d) d = v; } return d; };
@@ -56,10 +62,12 @@ export function assemble(parts) {
   const bb = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]; for (const b of pb) for (let a = 0; a < 3; a++) { bb[a] = Math.min(bb[a], b[a]); bb[a + 3] = Math.max(bb[a + 3], b[a + 3]); }
   const hiddenAt = (x, y, z, self) => { for (let j = 0; j < parts.length; j++) { if (j === self) continue; const b = pb[j]; if (x < b[0] || x > b[3] || y < b[1] || y > b[4] || z < b[2] || z > b[5]) continue; if (sdfs[j](x, y, z) < HIDE) return true; } return false; };
 
+  const decalTri = k => { for (let q = 0; q < parts.length; q++) if (k >= ranges[q].t0 && k < ranges[q].t1) return !!parts[q].decal; return false; };
   // ---- triangle areas, exposure
   const nt = ni / 3, area = new Float32Array(nt), hidden = new Uint8Array(nt); const exposedPart = new Float64Array(parts.length);
   let vol = 0, volExp = 0, wetted = 0;
   for (let pi = 0; pi < parts.length; pi++) for (let k = ranges[pi].t0; k < ranges[pi].t1; k++) {
+    if (parts[pi].decal) { hidden[k] = 1; continue; } // kính, đèn phủ: không tính diện tích, thể tích
     const a = I[k * 3] * 3, b = I[k * 3 + 1] * 3, c = I[k * 3 + 2] * 3, ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
     const gx = uy * vz - uz * vy, gy = uz * vx - ux * vz, gz = ux * vy - uy * vx, A = 0.5 * Math.hypot(gx, gy, gz); area[k] = A;
     const cx = (P[a] + P[b] + P[c]) / 3, cy = (P[a + 1] + P[b + 1] + P[c + 1]) / 3, cz = (P[a + 2] + P[b + 2] + P[c + 2]) / 3;
@@ -70,7 +78,7 @@ export function assemble(parts) {
   const volume = parts.length === 1 ? vol : volExp;
 
   // ---- projected areas (all triangles that are not hidden: hidden ones lie inside other parts anyway)
-  const all = []; for (let k = 0; k < nt; k++) all.push(k);
+  const all = []; for (let k = 0; k < nt; k++) if (!hidden[k] || !decalTri(k)) all.push(k);
   const frontal = rasterArea(P, I, all, 1, 2), planform = rasterArea(P, I, all, 0, 2), sideArea = rasterArea(P, I, all, 0, 1);
 
   // ---- body group

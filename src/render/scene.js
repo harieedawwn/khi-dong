@@ -58,6 +58,23 @@ function makeBezier(x1, y1, x2, y2) {
 }
 export const ease = makeBezier(0.2, 0.7, 0.2, 1);
 
+// Vật liệu mô hình: màu đỉnh + độ nhám / kim loại theo từng đỉnh (thuộc tính aMat: kính bóng, sơn kim loại, lốp nhám).
+// heat.value > 0 (đang bật bản đồ áp suất / ma sát): về mờ để màu đọc đúng và phát sáng nhẹ theo màu.
+export function makeModelMaterial(heat) {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.52, metalness: 0.02, transparent: true, opacity: 1, envMapIntensity: 1.6 });
+  m.userData.heat = heat;
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uHeat = heat;
+    sh.vertexShader = sh.vertexShader.replace('void main() {', 'attribute vec2 aMat;\nvarying vec2 vMat;\nvoid main() {').replace('#include <begin_vertex>', '#include <begin_vertex>\n vMat = aMat;');
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform float uHeat;\nvarying vec2 vMat;\nvoid main() {')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(vMat.x, 0.6, clamp(uHeat * 4.0, 0.0, 1.0));')
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n metalnessFactor = mix(vMat.y, 0.0, clamp(uHeat * 4.0, 0.0, 1.0));')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * uHeat;');
+  };
+  m.customProgramCacheKey = () => 'p5model-heat2';
+  return m;
+}
+
 export function createScene(opts = {}) {
   let tier = opts.tier === 'high' ? 'high' : 'low';
   let parent = opts.parent || ensureStage();
@@ -448,39 +465,46 @@ export function createScene(opts = {}) {
   // Thumbnails are rendered one per idle frame (a frame shorter than THUMB_IDLE_S), or one per THUMB_FORCE_S when frames are never idle,
   // never all at once: 23 synchronous readPixels in one task froze slow / software WebGL for seconds.
   const THUMB_IDLE_S = 0.045, THUMB_FORCE_S = 1.5, thumbQ = [], thumbPending = new Map(); let thumbLast = 0;
-  function thumbnail(model, px = 128) {
-    px = Math.min(px, 256);
+  // view: '34' (mặc định, 3/4 trước-trái), 'side', 'front', 'rear', 'top', '34r' (3/4 sau): hướng nhìn để kiểm tra / xuất ảnh
+  function thumbnail(model, px = 128, view = '34') {
+    px = Math.min(px, 1024);
+    const key = px + view;
     let m = thumbCache.get(model); if (!m) { m = new Map(); thumbCache.set(model, m); }
-    if (m.has(px)) return Promise.resolve(m.get(px));
+    if (m.has(key)) return Promise.resolve(m.get(key));
     let pm = thumbPending.get(model); if (!pm) { pm = new Map(); thumbPending.set(model, pm); }
-    if (pm.has(px)) return pm.get(px).promise;
-    const job = { model, px }; job.promise = new Promise((res, rej) => { job.res = res; job.rej = rej; });
-    pm.set(px, job); thumbQ.push(job); thumbLast = thumbLast || performance.now();
+    if (pm.has(key)) return pm.get(key).promise;
+    const job = { model, px, view, key }; job.promise = new Promise((res, rej) => { job.res = res; job.rej = rej; });
+    pm.set(key, job); thumbQ.push(job); thumbLast = thumbLast || performance.now();
     return job.promise;
   }
   function thumbStep() {
     const job = thumbQ.shift(); if (!job) return;
     thumbLast = performance.now();
-    try { job.res(renderThumb(job.model, job.px)); } catch (e) { job.rej(e); }
-    const pm = thumbPending.get(job.model); if (pm) { pm.delete(job.px); if (!pm.size) thumbPending.delete(job.model); }
+    try { job.res(renderThumb(job.model, job.px, job.view)); } catch (e) { job.rej(e); }
+    const pm = thumbPending.get(job.model); if (pm) { pm.delete(job.key); if (!pm.size) thumbPending.delete(job.model); }
   }
   setInterval(() => { if (thumbQ.length && !document.hidden && performance.now() - thumbLast > THUMB_FORCE_S * 1000) thumbStep(); }, 500);
-  function renderThumb(model, px) {
+  const THUMB_DIR = { '34': [-0.45, 0.4, 0.95], '34r': [0.55, 0.35, 0.9], side: [0, 0.02, 1], front: [-1, 0.04, 0], rear: [1, 0.04, 0], top: [0, 1, 0.001] };
+  function renderThumb(model, px, view = '34') {
     let m = thumbCache.get(model); if (!m) { m = new Map(); thumbCache.set(model, m); }
-    if (m.has(px)) return m.get(px);
+    if (m.has(px + view)) return m.get(px + view);
     if (!th) {
       const s = new THREE.Scene();
       s.add(new THREE.HemisphereLight(0xFFFFFF, 0x8A9099, 1.15));
       const dl = new THREE.DirectionalLight(0xFFFFFF, 2.1); dl.position.set(-1.2, 1.6, 1.4); s.add(dl, dl.target);
-      const mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0 }));
+      s.environment = envTex; s.environmentIntensity = 0.55;
+      const tm = makeModelMaterial({ value: 0 }); tm.transparent = false;
+      const mesh = new THREE.Mesh(new THREE.BufferGeometry(), tm);
       s.add(mesh); th = { s, mesh, cam: new THREE.PerspectiveCamera(28, 1, 0.02, 30), box: new THREE.Box3(), ctr: new THREE.Vector3(), sz: new THREE.Vector3() };
     }
     const src = model.geometry, g = new THREE.BufferGeometry();
     for (const n of ['position', 'normal', 'color']) if (src.attributes[n]) g.setAttribute(n, src.attributes[n]);
+    if (src.attributes.mat) g.setAttribute('aMat', src.attributes.mat);
     if (src.index) g.setIndex(src.index);
     g.computeBoundingBox(); th.box.copy(g.boundingBox); th.box.getCenter(th.ctr); th.box.getSize(th.sz);
-    const rad = Math.max(0.05, th.sz.length() / 2), dist = rad / Math.sin(th.cam.fov * DEG / 2) * 1.04;
-    th.cam.position.set(th.ctr.x - 0.45 * dist, th.ctr.y + 0.4 * dist, th.ctr.z + 0.95 * dist).sub(th.ctr).setLength(dist).add(th.ctr);
+    const rad = Math.max(0.05, th.sz.length() / 2), dist = rad / Math.sin(th.cam.fov * DEG / 2) * (view === "34" || view === "34r" ? 0.9 : 0.97);
+    const dv = THUMB_DIR[view] || THUMB_DIR['34'];
+    th.cam.position.set(th.ctr.x + dv[0] * dist, th.ctr.y + dv[1] * dist, th.ctr.z + dv[2] * dist).sub(th.ctr).setLength(dist).add(th.ctr);
     th.cam.lookAt(th.ctr); th.cam.updateMatrixWorld();
     th.mesh.geometry = g;
     const ms = Q.aa ? 4 : 0, rkey = px + ':' + ms;
@@ -495,7 +519,7 @@ export function createScene(opts = {}) {
     for (let y = 0; y < px; y++) out.set(buf.subarray((px - 1 - y) * px * 4, (px - y) * px * 4), y * px * 4);
     const cv = document.createElement('canvas'); cv.width = cv.height = px;
     cv.getContext('2d').putImageData(new ImageData(out, px, px), 0, 0);
-    const url = cv.toDataURL('image/png'); m.set(px, url);
+    const url = cv.toDataURL('image/png'); m.set(px + view, url);
     return url;
   }
 
@@ -612,7 +636,7 @@ export function createScene(opts = {}) {
 
   return {
     three: THREE, renderer, scene, camera, root, controls, canvas,
-    setCamera, thumbnail, raycastMidplane, onFrame, setTier, refocus, setQuality, quality: () => Object.assign({}, Q),
+    setCamera, thumbnail, thumbnailNow: renderThumb, raycastMidplane, onFrame, setTier, refocus, setQuality, quality: () => Object.assign({}, Q),
     setWind(uvis) { fanVis = uvis; },
     setStrutTop(y) { strutTarget = y; },
     setFocusRadius(r) { focusR = Math.max(0.1, r); },
