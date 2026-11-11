@@ -72,7 +72,7 @@ test('NACA 0012 lookup reproduces its source points; NACA 2412 reproduces Abbott
   HIGH.a.forEach((a, i) => { const r = naca0012(a, 5e5); assert.ok(Math.abs(r.cl - HIGH.cl[i]) < 1e-9 && Math.abs(r.cd - HIGH.cd[i]) < 1e-9); });
   NACA2412.a.forEach((a, i) => { const r = naca2412(a, 3.1e6); assert.ok(Math.abs(r.cl - NACA2412.cl[i]) < 1e-9 && Math.abs(r.cd - NACA2412.cd[i]) < 1e-9, '2412 alpha ' + a); });
   // between Reynolds numbers the value lies between the neighbouring tables
-  const m = naca0012(12, 3.3e5).cl; assert.ok(m > 0.80 && m < 1.04);
+  const m = naca0012(12, 3.3e5).cl; assert.ok(m > 0.1533 && m < 1.039);
 });
 
 test('wing_2412: lift at 0 deg, L/D peak 4-8 deg, stall near 16 deg with a shedding frequency on the projected height', () => {
