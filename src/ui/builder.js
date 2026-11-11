@@ -8,6 +8,8 @@ const CSS = `
 .bld-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex:0 0 auto}
 .bld .chip,.bld .btn{min-height:36px;padding:0 9px;font-size:12.5px;line-height:1.4;cursor:pointer;touch-action:manipulation;justify-content:center}
 .bld .btn{display:inline-flex;align-items:center;border:1px solid var(--line,rgba(27,29,33,.14));border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:13px}
+.bld-lbl{flex:0 0 auto;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted,#5E636B)}
+.bld-top .chip{font-weight:600;border-color:var(--red,#C8102E);color:var(--red,#C8102E)}
 .bld-tabs{display:flex;gap:4px;flex:0 0 auto;border-bottom:1px solid var(--line,rgba(27,29,33,.14))}
 .bld-tabs button{flex:1 1 0;min-width:0;min-height:40px;padding:0 4px;border:0;border-bottom:3px solid transparent;background:transparent;color:var(--muted,#5E636B);font:inherit;font-size:13px;font-weight:600;line-height:1.4;cursor:pointer;touch-action:manipulation;overflow-wrap:anywhere}
 .bld-tabs button[aria-selected="true"]{color:var(--ink,#1B1D21);border-bottom-color:var(--red,#C8102E)}
@@ -57,7 +59,8 @@ export function init(ctx) {
   host.appendChild(root);
   const top = root.querySelector('.bld-top'), tabs = root.querySelector('.bld-tabs'), body = root.querySelector('.bld-body'), sum = root.querySelector('.bld-sum');
 
-  // ---- mẫu có sẵn + đặt lại
+  // ---- dựng từ mẫu (bấm là có hình đẹp, rồi chỉnh tham số) + đặt lại
+  const lbl = document.createElement('div'); lbl.className = 'bld-lbl'; lbl.textContent = 'Dựng từ mẫu'; top.appendChild(lbl);
   for (const k of TEMPLATE_ORDER.filter(k => catalog.TEMPLATES && catalog.TEMPLATES[k])) {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = catalog.TEMPLATES[k].label;
     b.addEventListener('click', () => { ctx.sfx && ctx.sfx.play('tap'); setAll(clone(catalog.TEMPLATES[k].builder)); }); top.appendChild(b);

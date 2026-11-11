@@ -30,3 +30,12 @@ Công cụ mới: `tools/look.mjs` (ảnh kiểm tra nhiều hướng nhìn, kh�
 
 ## Đã làm xong (phiên này)
 Tất cả mục trên đã đạt; xem ACCEPTANCE.md. Việc sau: thử điện thoại thật; sdf bánh/ống chính xác hơn; HUD làm tròn F nhỏ về 0.
+
+## Đợt 2 (yêu cầu giáo viên: tên trường nổi bật + Tự lắp ghép đẹp như thư viện)
+- [x] Tên trường: thẻ kem bo tròn, vạch đỏ 6 px bên trái, viền đỏ mảnh, bóng; chữ to hơn; khung số đo ngay dưới; điện thoại / máy tính bảng: thẻ nằm dưới hộp tiêu đề, trải ngang, không tràn
+- [x] Builder dựng lại (src/geom/catalog.js): thân kín một khối bằng loft (mũi + thân + đuôi), vòi phun hình chuông cho đuôi cụt, kính buồng lái cho máy bay, cửa sổ tròn cho tên lửa; có bánh xe thì thân là hull xe (kit.carHull) có vòm bánh, kính, đèn pha / đèn hậu, lưới tản nhiệt, gương, bánh có vành; mũi (nón/ogive/bán cầu/phẳng) và đuôi (nhọn/bo/cụt) đổi kiểu mui, kính sau; thân tròn/bầu dục/hộp đổi độ bo vai
+- [x] Màu sơn theo kiểu (paletteOf): xe xanh xám, máy bay trắng + đuôi xanh đậm, tên lửa trắng + mũi / cánh đỏ, giọt nước xanh nhạt; heatmap vẫn ghi đè
+- [x] Nút "Dựng từ mẫu" (Tên lửa, Máy bay, Giọt nước, Ô tô) ở đầu tab builder; mẫu ô tô đổi đuôi bo + thân ngắn hơn
+- [x] geom.test (552 mô hình, tối đa 39,7 nghìn đỉnh), physics.test xanh; meshcheck --builder --sdf sạch; thứ tự CD@20: giọt nước 0,061 < xe 0,144 < tấm 0,80, không NaN
+- [x] Công cụ mới: tools/lookb.mjs (ảnh nhiều hướng cho mẫu / cấu hình builder), meshcheck --builder, qa.mjs --builder <mẫu>
+- Ghi chú: geom.test cho phép cạnh dài nhất của thân xe tới 4,5 % L (mép vòm bánh, như xe thư viện); còn lại 1,5 %. Builder không có ảnh thu nhỏ (chỉ biểu tượng SVG), nên không phải cập nhật.

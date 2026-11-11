@@ -1,6 +1,8 @@
 // Kiểm tra lưới từng chi tiết dòng chảy: kín nước (mỗi cạnh dùng đúng 2 lần sau khi hàn đỉnh), thể tích dương, sdf đúng dấu (chiếu tia lẻ).
 //   node tools/meshcheck.mjs [tiền_tố_id] [--sdf]
 import { LIBRARY } from '../src/geom/library.js';
+import { TEMPLATES, SLOTS, buildFromBuilder, defaultParams } from '../src/geom/catalog.js';
+// --builder: các mẫu lắp ghép + mỗi lựa chọn mũi/thân/đuôi/cánh/đuôi lái (có và không có bánh xe)
 const only = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '', doSdf = process.argv.includes('--sdf');
 function weld(P) { const q = 1e-6, map = new Map(), id = new Int32Array(P.length / 3); for (let i = 0; i < id.length; i++) { const k = Math.round(P[3 * i] / q) + ',' + Math.round(P[3 * i + 1] / q) + ',' + Math.round(P[3 * i + 2] / q); let v = map.get(k); if (v === undefined) { v = map.size; map.set(k, v); } id[i] = v; } return id; }
 function check(part) {
@@ -25,7 +27,10 @@ function inside(P, I, x, y, z, dir) { // Moller-Trumbore, đếm chẵn lẻ
   return hits % 2 === 1;
 }
 let bad = 0, rs = 12345; const rnd = () => { rs = (rs * 1664525 + 1013904223) >>> 0; return rs / 4294967296; };
-for (const e of LIBRARY) {
+const opt = k => SLOTS.find(x => x.key === k).options.map(o => o.id), BUILD = [];
+for (const k in TEMPLATES) BUILD.push({ id: 'tpl_' + k, build: () => buildFromBuilder(TEMPLATES[k].builder) });
+for (const wheels of [0, 1]) for (const nose of opt('nose')) for (const body of opt('body')) for (const tail of opt('tail')) { const b = { nose, body, tail, wing: wheels ? 'none' : 'swept', fins: wheels ? 'none' : 'cross', p: { ...defaultParams(), wheels } }; BUILD.push({ id: `b_${nose}_${body}_${tail}_${wheels}`, build: () => buildFromBuilder(b) }); }
+for (const e of process.argv.includes('--builder') ? BUILD : LIBRARY) {
   if (only && !e.id.startsWith(only)) continue;
   const parts = e.build(), notes = [];
   for (const p of parts) {

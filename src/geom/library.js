@@ -16,7 +16,7 @@ const rev = rows => rows.map(([x, r, yc = 0]) => [x, yc + r, yc - r, 2 * r]); //
 const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 // thân tròn/hộp bằng loft: rows [x, đỉnh, đáy, rộng] (mét thật), n = độ vuông của tiết diện (2 = elip)
-function solid(F, rows, o = {}) {
+export function solid(F, rows, o = {}) {
   const x0 = rows[0][0], Lr = rows[rows.length - 1][0] - x0, t = x => (x - x0) / Lr, s = F.s;
   return make('loft', {
     ref: F.ref * (o.rk ?? 1), id: o.id, role: o.role || 'body', tone: o.tone ?? 0, toneFn: o.toneFn, n: o.n ?? 2, x0: F.X(x0), length: Lr * s,
@@ -24,11 +24,11 @@ function solid(F, rows, o = {}) {
     creases: (o.creases || []).map(t), capStart: o.capStart, capEnd: o.capEnd,
   });
 }
-const wing = (F, o) => make('wing', { ref: F.ref * (o.e ?? 1.5), id: o.id ?? 'wing', role: o.role, profile: o.profile ?? '0012', tc: o.tc ?? 0.12, span: F.m(o.span), rootChord: F.m(o.cr), tipChord: F.m(o.ct ?? o.cr), sweepDeg: o.sweep ?? 0, dihedralDeg: o.dih ?? 0, incDeg: o.inc ?? 0, rootLE: [F.X(o.x), F.Y(o.y), 0], tone: o.tone ?? 0 });
+export const wing = (F, o) => make('wing', { ref: F.ref * (o.e ?? 1.5), id: o.id ?? 'wing', role: o.role, profile: o.profile ?? '0012', tc: o.tc ?? 0.12, span: F.m(o.span), rootChord: F.m(o.cr), tipChord: F.m(o.ct ?? o.cr), sweepDeg: o.sweep ?? 0, dihedralDeg: o.dih ?? 0, incDeg: o.inc ?? 0, rootLE: [F.X(o.x), F.Y(o.y), 0], tone: o.tone ?? 0 });
 const stab = (F, o) => wing(F, { id: 'stab', role: 'fin', tc: 0.09, tone: 1, ...o });
-const fin = (F, o) => make('fin', { ref: F.ref * (o.e ?? 1.5), id: o.id ?? 'fin_v', profile: o.profile ?? '0012', tc: o.tc ?? 0.09, span: F.m(o.h), rootChord: F.m(o.cr), tipChord: F.m(o.ct), sweepDeg: o.sweep ?? 0, angleDeg: o.ang ?? 0, rootLE: [F.X(o.x), F.Y(o.y ?? 0), 0], tone: o.tone ?? 1 });
+export const fin = (F, o) => make('fin', { ref: F.ref * (o.e ?? 1.5), id: o.id ?? 'fin_v', profile: o.profile ?? '0012', tc: o.tc ?? 0.09, span: F.m(o.h), rootChord: F.m(o.cr), tipChord: F.m(o.ct), sweepDeg: o.sweep ?? 0, angleDeg: o.ang ?? 0, rootLE: [F.X(o.x), F.Y(o.y ?? 0), 0], tone: o.tone ?? 1 });
 const nacelle = (F, o) => make('nacelle', { ref: F.ref, id: o.id, x0: F.X(o.x), length: F.m(o.len), radius: F.m(o.r), y: F.Y(o.y), z: F.Z(o.z), endRatio: o.end ?? 0.6, tone: o.tone ?? 1 });
-const canopy = (F, o) => make('canopy', { ref: F.ref, id: o.id ?? 'canopy', x0: F.X(o.x), length: F.m(o.len), width: F.m(o.w), height: F.m(o.h), y: F.Y(o.y), peak: o.peak ?? 0.4, tone: o.tone ?? 2 });
+export const canopy = (F, o) => make('canopy', { ref: F.ref, id: o.id ?? 'canopy', x0: F.X(o.x), length: F.m(o.len), width: F.m(o.w), height: F.m(o.h), y: F.Y(o.y), peak: o.peak ?? 0.4, tone: o.tone ?? 2 });
 const sweepOf = (off, span) => Math.atan2(off, span) * R2D; // độ xuôi mép trước từ độ lệch thật
 
 /* ------------------------------------------------------------------ chi tiết dùng chung */
@@ -43,7 +43,7 @@ const FAN_PTS = [[0, 0.78], [0.16, 0.52], [0.78, 0.5], [0.8, 0.02], [0.9, -0.04]
 const FAN_SIL = [[0, -0.04], [0.9, -0.04], [0.98, 0.2], [1, 0.9], [0.96, 2.3], [0.82, 3.5], [0.7, 3.95], [0.4, 4.15], [0.18, 4.6], [0, 4.75]];
 const turbofan = (F, o) => lathe(F, { ...o, pts: FAN_PTS, sil: FAN_SIL, tone: o.tone ?? 0, toneFn: (r, a) => ((a < 0.56 && r < 0.81) || (a > 3.6 && r < 0.62 && a < 4.2) ? 2 : (r > 0.6 && a < 0.3 ? 1 : (o.tone ?? 0))) });
 // vòi phun hình chuông (mũi nhọn quay về +x): bên trong tối
-function bellNozzle(F, o) { // x = mặt gắn, len, r0 = bán kính chân, r1 = bán kính miệng
+export function bellNozzle(F, o) { // x = mặt gắn, len, r0 = bán kính chân, r1 = bán kính miệng
   const L = o.len, r0 = o.r0, r1 = o.r1, w = Math.max(0.02 * r1, 0.012 * L), pts = [[0, 0.02 * L], [r0, 0.02 * L], [r0 * 0.86, 0.22 * L], [r0 * 0.78, 0.42 * L], [r1 * 0.78, 0.7 * L], [r1, L], [r1 - w, L], [r1 * 0.74, 0.74 * L], [r0 * 0.6, 0.5 * L], [0.1 * r0, 0.36 * L], [0, 0.34 * L]];
   const sil = [[0, 0.02 * L], [r0, 0.02 * L], [r0 * 0.86, 0.22 * L], [r0 * 0.78, 0.42 * L], [r1 * 0.78, 0.7 * L], [r1, L], [0, L]];
   return lathe(F, { id: o.id, x: o.x, y: o.y ?? 0, z: o.z ?? 0, pts, sil, tone: o.tone ?? 6, role: o.role ?? 'tail', toneFn: (r, a, nx) => (nx > 0.12 && a > 0.3 * L ? 2 : (o.tone ?? 6)) });

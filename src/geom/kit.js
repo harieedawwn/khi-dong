@@ -70,13 +70,14 @@ export function carHull(F, o) {
     const hood = [[w - 0.01, belt + 0.15 * hh], [w - hoodR, belt + 0.8 * hh], [w * 0.80, top - 0.1 * hh], [w * 0.60, top - 0.03 * hh], [w * 0.30, top], [0, top]];
     const gh = [[wgb, belt + 0.02], lerp2([wgb, belt + 0.02], [wgt, top], 0.82), [wgt, top], [wgt - rr, top], [wgt * 0.45, top], [0, top]];
     const up = hood.map((p, i) => lerp2(p, gh[i], g));
-    return [[0, fl], [zi * 0.5, fl], [zi, fl], [zi, yL], [Math.max(zi, w - tuck - 0.05), yL], [w - tuck, yL], [w - 0.35 * tuck, yL + 0.3 * dY], [w, yL + 0.65 * dY], [w - 0.01, belt, 2], ...up];
+    const vs = []; for (let i = 1; i <= (o.vsub ?? 0); i++) vs.push([zi, fl + (yL - fl) * i / ((o.vsub ?? 0) + 1)]);
+    return [[0, fl], [zi * 0.5, fl], [zi, fl], ...vs, [zi, yL], [Math.max(zi, w - tuck - 0.05), yL], [w - tuck, yL], [w - 0.35 * tuck, yL + 0.3 * dY], [w, yL + 0.65 * dY], [w - 0.01, belt, 2], ...up];
   };
-  const stationsReal = stationList(0, L, o.n ?? 130, arches.map(a => [a.x, a.R, 18]));
+  const stationsReal = stationList(0, L, o.n ?? 130, arches.map(a => [a.x, a.R, o.ac ?? 18]));
   const stations = stationsReal.map(F.X);
   const sec = xm => secReal(F.inv(xm)).map(p => [F.Z(p[0]), F.Y(p[1]), p[2]]);
   const toneFn = o.toneFn && ((x, y, z, nx, ny, nz) => o.toneFn(F.inv(x), y / F.s - F.oy, z / F.s, nx, ny, nz));
-  const hull = make('hull', { id: o.id ?? 'body', role: 'body', ref: F.ref, stations, sec, spp: 3, tone: 0, toneFn });
+  const hull = make('hull', { id: o.id ?? 'body', role: 'body', ref: F.ref, stations, sec, spp: o.spp ?? 3, tone: 0, toneFn });
   hull.secReal = secReal; return hull;
 }
 // vòm bánh tối + nẹp thấp đen: hàm tông dùng chung cho xe con

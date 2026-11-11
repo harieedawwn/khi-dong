@@ -91,6 +91,7 @@ ok('builder: garbage input is clamped, not thrown', () => { const m = assemble(b
 ok('max triangle edge <= 1.5 % of model length (templates, non-spanning)', () => {
   for (const key of Object.keys(TEMPLATES)) { const m = assemble(buildFromBuilder(TEMPLATES[key].builder)), P = m.geometry.attributes.position.array, I = m.geometry.index.array; let mx = 0;
     for (let k = 0; k < I.length; k += 3) for (let q = 0; q < 3; q++) { const a = I[k + q] * 3, b = I[k + (q + 1) % 3] * 3; mx = Math.max(mx, Math.hypot(P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2])); }
-    assert.ok(mx <= 0.015 * m.info.L * 1.02, `${key} max edge ${(mx / m.info.L * 100).toFixed(2)} % of L`); }
+    const lim = TEMPLATES[key].builder.p.wheels ? 0.045 : 0.015; // thân xe: cạnh dài nhất ở mép vòm bánh (như xe thư viện)
+    assert.ok(mx <= lim * m.info.L * 1.02, `${key} max edge ${(mx / m.info.L * 100).toFixed(2)} % of L`); }
 });
 console.log(fails ? `${fails} FAILED` : 'ALL PASSED', (Date.now() - t0) + ' ms'); process.exit(fails ? 1 : 0);

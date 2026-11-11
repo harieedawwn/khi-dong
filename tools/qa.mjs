@@ -10,7 +10,7 @@ let bad = 0;
 for (const [W, H] of sizes) {
   const s = await open({ tier: 'low', W, H, q: '&q=12' });
   const { page } = s;
-  await page.evaluate((m) => { const { ctx } = window.__app; ctx.state.set({ mode: 'library', modelId: m, U: 20 }); }, A.model || 'car_sedan');
+  await page.evaluate(([m, t]) => { const { ctx } = window.__app; if (t) ctx.state.set({ mode: 'builder', builder: JSON.parse(JSON.stringify(ctx.catalog.TEMPLATES[t].builder)), U: 20 }); else ctx.state.set({ mode: 'library', modelId: m, U: 20 }); }, [A.model || 'car_sedan', A.builder || '']);
   await page.waitForTimeout(2500);
   const r = await page.evaluate(() => {
     const de = document.documentElement, res = { scrollX: de.scrollWidth > innerWidth + 1, scrollY: de.scrollHeight > innerHeight + 1, bodyScroll: document.body.scrollHeight > innerHeight + 1, clipped: [], overlap: [], layout: de.getAttribute('data-layout') };
