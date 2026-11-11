@@ -214,7 +214,7 @@ export const SCENARIOS = [
     pin: ['car_sedan', 'truck_box'], tab: 'compare', metric: 'FD', expand: true },
   { id: 'super', title: 'Vượt tốc độ âm thanh',
     sub: 'Tên lửa thám không ở M 1,5',
-    task: 'Tên lửa bay ở M 1,5. Tìm sóng xung kích hình nón, góc Mach ≈ 41,8° (sinμ = 1/M), và xem lực cản tăng vọt khi vượt M 1 trên đồ thị F theo v.',
+    task: 'Tên lửa bay ở M 1,5. Mũi tên lửa tròn nên có sóng xung kích cong tách khỏi mũi; xa mũi sóng tiến gần góc Mach ≈ 41,8° (sinμ = 1/M). Xem lực cản tăng vọt khi vượt M 1 trên đồ thị F theo v.',
     modelId: 'rocket_sounding', mach: 1.5, alphaDeg: 0, camera: 'side', flow: 'smoke', shock: true,
     pin: [], tab: 'curve', metric: 'FD', expand: true }
 ];

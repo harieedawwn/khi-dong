@@ -142,6 +142,9 @@ async function boot() {
   state.on('change:modelId', () => scheduleLoad(false));
   state.on('change:builder', () => scheduleLoad(true));
   state.on('change:camera', () => scene.setCamera(state.get().camera));
+  state.on('layout', (e) => scene.setSafeArea(e));
+  const syncTunnel = () => scene.setTunnel(state.get().view.tunnel !== false);
+  state.on('change:view', syncTunnel); syncTunnel();
   scene.setCamera(state.get().camera || 'overview');
 
   /* ----------------------------------------------------------- frame loop */
@@ -172,7 +175,9 @@ async function boot() {
       lastU = U; lastAlpha = alpha; lastAir = air; lastActive = active; evalDirty = false; inputsChanged = true;
     }
 
-    if (flowReady) flow.update(res, alpha, Uvis, dt);
+    // phát lại dòng khí: 0,25x-1x hoặc tạm dừng (chỉ nhân thời gian của khói / hạt / bộ giải; số đo vẫn là số thật)
+    const vw = s.view, rateN = Math.min(1, Math.max(0.25, vw.rate ?? 1)), pdt = vw.paused ? 0 : dt * rateN;
+    if (flowReady) flow.update(res, alpha, Uvis, pdt);
 
     // surface fields: <= 10 Hz, sooner when alpha / Mach / regime change
     const rg = res.regime || {};
@@ -193,10 +198,10 @@ async function boot() {
     modelview.setForces(res);
     modelview.update(dt);
     scene.setWind(Uvis);
-    for (let i = 0; i < renderMods.length; i++) renderMods[i].update(dt);
+    for (let i = 0; i < renderMods.length; i++) renderMods[i].update(pdt);
     if (U !== lastWindU || s.sound !== lastSound) { lastWindU = U; lastSound = s.sound; sfx.setWind(s.sound === false ? 0 : U); }
 
-    results.air = air; results.aero = res; results.U = U; results.Uvis = Uvis; results.slow = Uvis > 0 ? U / Uvis : 1;
+    results.air = air; results.aero = res; results.U = U; results.Uvis = Uvis; results.slow = Uvis > 0 ? U / (Uvis * rateN) : 1;
     results.phase = flowReady ? flow.phase() : 0;
     const sf = results.surface;
     if (surfFields) { sf.frontPa = surfFields.frontPa; sf.frontN = surfFields.frontN; sf.stagPa = surfFields.stagPa; sf.windwardN = surfFields.windwardN; sf.windwardMeanPa = surfFields.windwardMeanPa; sf.cpRange = surfFields.cpRange; } else { sf.frontPa = 0; sf.frontN = 0; sf.stagPa = 0; sf.windwardN = 0; sf.windwardMeanPa = 0; }

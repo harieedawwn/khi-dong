@@ -1,7 +1,7 @@
 // charts.js (P8): #charts with three canvas charts (time, compare, F(v)) and the pin list.
 import {
   TIME_WINDOW, MAX_PINS, PIN_COLORS, CURRENT_COLOR, C, WORD_FLOW,
-  fmtNum, fmtFixed, fmtVal, makePin, makeSnapshot, pinLabel, h, setText, ensureStyles, clamp, NB
+  fmtNum, fmtFixed, fmtVal, makePin, makeSnapshot, pinLabel, h, setShown, setText, ensureStyles, clamp, NB
 } from '../config.js';
 
 const TABS = [['time', 'Theo thời gian'], ['compare', 'So sánh'], ['curve', 'F theo v']];
@@ -52,10 +52,24 @@ export function init(ctx) {
       k === 'CD' ? h('span', null, 'C', h('span', { class: 'p8-s' }, 'D')) : METRICS[k].label);
     metricBtns.set(k, b); metricBox.appendChild(b);
   }
-  const pauseBtn = h('button', { type: 'button', class: 'btn', onClick: () => setPaused(!paused) }, 'Tạm dừng');
+  const pauseBtn = h('button', { type: 'button', class: 'btn', onClick: () => setPaused(!paused) }, 'Dừng đồ thị');
   const clearBtn = h('button', { type: 'button', class: 'btn', onClick: () => clearTime() }, 'Xóa');
   const timeTools = h('div', { class: 'p8-row' }, pauseBtn, clearBtn);
   
+  // huy hiệu chế độ dòng chảy hiện tại (HANDOFF-flow 3): khủng hoảng lực cản, thất tốc, sau tới hạn
+  const BADGES = [
+    ['dragCrisis', 'Khủng hoảng lực cản', 'Lớp biên chuyển sang rối: vệt hẹp lại, C_D tụt mạnh nên F không còn tỉ lệ với v².'],
+    ['stalled', 'Thất tốc', 'Dòng khí tách khỏi mặt trên: lực nâng tụt, lực cản tăng.'],
+    ['postCritical', 'Sau tới hạn', 'Lớp biên rối bám lâu hơn: vệt sau vật hẹp, C_D thấp.']
+  ];
+  const badgeEls = new Map();
+  const badgeRow = h('div', { class: 'p8-badges', 'aria-live': 'polite' }, BADGES.map(([k, label, tip]) => { const b = h('span', { class: 'badge badge--warn', title: tip, hidden: true }, label); badgeEls.set(k, b); return b; }));
+  let badgeSig = '';
+  function paintBadges(a) {
+    const sig = BADGES.map(([k]) => (a && a[k] ? 1 : 0)).join('');
+    if (sig === badgeSig) return; badgeSig = sig;
+    for (const [k] of BADGES) setShown(badgeEls.get(k), !!(a && a[k]));
+  }
   const cv = h('canvas', { role: 'img', 'aria-label': 'Biểu đồ lực' });
   const cvWrap = h('div', { class: 'p8-ch-cv' }, cv);
   const pinBtn = h('button', { type: 'button', class: 'btn btn-primary', onClick: () => addPin() }, 'Ghim cấu hình');
@@ -63,7 +77,7 @@ export function init(ctx) {
   const bar = h('div', { class: 'p8-ch-bar' }, pinBtn, h('span', { class: 'p8-sp' }), metricBox, timeTools);
   if (mount) {
     mount.textContent = '';
-    mount.appendChild(h('div', { class: 'p8-ch' }, tabbar, cvWrap, bar, pinList));
+    mount.appendChild(h('div', { class: 'p8-ch' }, tabbar, badgeRow, cvWrap, bar, pinList));
   }
 
   /* ---------- theme + canvas ---------- */
@@ -118,6 +132,7 @@ export function init(ctx) {
   /* ---------- time chart ---------- */
   function feed(res, dt) {
     if (!res || !res.aero) return;
+    paintBadges(res.aero);
     if (dt == null) { const now = performance.now(); dt = lastClockWall ? Math.min(0.1, (now - lastClockWall) / 1000) : 0; lastClockWall = now; }
     if (paused) return;
     clock += dt;
@@ -133,7 +148,7 @@ export function init(ctx) {
   function clearTime() { buf.length = 0; yr = null; lastSample = -1; draw(); }
   function setPaused(on) {
     paused = !!on;
-    setText(pauseBtn, paused ? 'Tiếp tục' : 'Tạm dừng');
+    setText(pauseBtn, paused ? 'Tiếp tục' : 'Dừng đồ thị');
     pauseBtn.setAttribute('aria-pressed', paused ? 'true' : 'false');
     lastClockWall = 0;
   }
@@ -371,7 +386,7 @@ export function init(ctx) {
     state.on('chart:tab', d => d && setTab(d.tab, d.metric)),
     state.on('chart:clear', () => clearTime()),
     state.on('change:pins', () => { scheduleChips(); sig = ''; }),
-    state.on('change:modelId', scheduleChips), state.on('change:mode', scheduleChips),
+    state.on('change:modelId', () => { scheduleChips(); clearTime(); }), state.on('change:mode', () => { scheduleChips(); clearTime(); }), state.on('model:ready', () => clearTime()),
     state.on('change:alphaDeg', scheduleChips), state.on('change:builder', scheduleChips)
   ];
   let ro = null;

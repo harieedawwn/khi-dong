@@ -15,7 +15,7 @@ export function init(ctx) {
   const root = $('readouts'), hudEl = $('hud'), legendEl = $('legend');
 
   /* ---------- smoothed channels ---------- */
-  const IDS = ['FD', 'FL', 'CD', 'CL', 'LD', 'frontPa', 'frontN', 'fShed', 'U', 'kmh', 'M', 'Re', 'q', 'p0', 'T0', 'mach', 'St',
+  const IDS = ['FD', 'FL', 'CD', 'CL', 'LD', 'frontPa', 'frontN', 'fShed', 'Dshed', 'U', 'kmh', 'M', 'Re', 'q', 'p0', 'T0', 'mach', 'St',
     'rho', 'p', 'T', 'mu', 'a', 'CDp', 'CDf', 'CDi', 'CDw', 'power', 'buoy', 'sep', 'Aref', 'Lref', 'pSpeed', 'pP', 'pCp', 'slow', 'cpMax', 'q2'];
   const S = {}; IDS.forEach(id => { S[id] = makeSmoother(SMOOTH_TAU); });
   let cur = {};          // smoothed values (numbers)
@@ -29,8 +29,8 @@ export function init(ctx) {
     const sepOK = a.sepDeg != null && isFinite(a.sepDeg);
     const t = {
       FD: num(a.FD), FL: num(a.FL), CD: num(a.CD), CL: num(a.CL), LD: num(a.LD),
-      frontPa: num(sf.frontPa), frontN: num(sf.frontN),
-      fShed: wake === 'street' && a.fShed > 0 ? num(a.fShed) : NaN,
+      frontPa: num(sf.stagPa != null ? sf.stagPa : sf.frontPa), frontN: num(sf.windwardN != null ? sf.windwardN : sf.frontN),
+      fShed: a.fShed > 0 ? num(a.fShed) : NaN, Dshed: num(a.Dshed),
       U, kmh: U * 3.6, M, Re: num(a.Re), q: num(a.q), p0: num(a.p0), T0: num(a.T0) - 273.15,
       mach: M > 1 ? num(a.machAngleDeg) : NaN, St: num(a.St),
       rho: num(air.rho), p: num(air.p), T: num(air.T), mu: num(air.mu), a: num(air.a),
@@ -70,7 +70,7 @@ export function init(ctx) {
     tile('CD', sym('C', 'D')),
     tile('CL', sym('C', 'L')),
     tile('LD', h('span', null, 'F nâng / F cản')),
-    tile('front', h('span', null, 'Áp lực mặt trước'), 'p8-w6'),
+    tile('front', h('span', null, 'Áp suất hãm dư p', h('span', { class: 'p8-s' }, '0'), ' − p', h('span', { class: 'p8-s' }, '∞')), 'p8-w6'),
     tile('fShed', h('span', null, 'Tần số tách xoáy f'), 'p8-w6')));
 
   const probeGroup = group('Đầu dò', h('div', { class: 'p8-kvs' },
@@ -221,10 +221,11 @@ export function init(ctx) {
     setTile('FD', D('FD', fmtNum(c.FD)), 'N'); setTile('FL', D('FL', fmtNum(c.FL)), 'N');
     setTile('CD', D('CD', fmtNum(c.CD)), ''); setTile('CL', D('CL', fmtNum(c.CL)), '');
     setTile('LD', D('LD', fmtNum(c.LD)), '');
-    const fp = fmtNum(c.frontPa), fn = fmtNum(c.frontN);
-    setTile('front', D('front', fp === DASH ? DASH : fp + NB + 'Pa · ' + fn + NB + 'N'), '');
+    const fp = fmtNum(c.frontPa), fn = fmtNum(c.frontN); // p0 − p∞ (luôn dương) và lực áp suất lên mặt đón gió
+    setTile('front', D('front', fp === DASH ? DASH : fp + NB + 'Pa'), '', fn === DASH ? '' : 'lực mặt đón gió ' + fn + NB + 'N');
     const street = isFinite(c.fShed);
-    setTile('fShed', D('fShed', street ? fmtNum(c.fShed) : DASH), 'Hz', WORD_WAKE[rg.wake] || '');
+    const projNote = street && isFinite(c.Dshed) && (rg.wake === 'irregular' || a.stalled || (a.regime && a.regime.wake !== 'street')) ? 'theo chiều cao chiếu ' + fmtNum(c.Dshed * 100) + NB + 'cm' : '';
+    setTile('fShed', D('fShed', street ? fmtNum(c.fShed) : DASH), 'Hz', street ? (projNote || WORD_WAKE[rg.wake] || '') : (WORD_WAKE[rg.wake] || ''));
     setKv('vel', D('vel', fmtVal(c.U, 'm/s') + ' · ' + fmtVal(c.kmh, 'km/h')));
     setKv('M', D('M', fmtNum(c.M)), WORD_FLOW[rg.flow] || '');
     setKv('Re', D('Re', fmtRe(c.Re)), WORD_BL[rg.bl] || '');

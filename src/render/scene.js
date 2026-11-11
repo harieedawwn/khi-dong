@@ -126,7 +126,7 @@ export function createScene(opts = {}) {
   scene.add(hemi, key, key.target, rim, rim.target);
 
   /* --------------------------------------------------------------- helpers */
-  const steelGeos = [];
+  const steelGeos = [], tunnelHide = [];
   const tmpC = new THREE.Color();
   function paint(g, hex) {
     tmpC.set(hex);
@@ -220,7 +220,7 @@ export function createScene(opts = {}) {
   const steelMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.6, roughness: 0.42 });
   const steel = new THREE.Mesh(mergeGeometries(steelGeos, false, 'steel'), steelMat);
   steel.name = 'frame';
-  scene.add(steel);
+  scene.add(steel); tunnelHide.push(steel);
   for (const g of steelGeos) g.dispose();
 
   /* ------------------------------------------------ contraction + diffuser */
@@ -266,7 +266,7 @@ export function createScene(opts = {}) {
     for (const x of [DX1, HX1]) {
       const g = new THREE.TorusGeometry(R_F + 0.01, 0.035, 6, 40); g.rotateY(Math.PI / 2); g.translate(x, 0, 0); paint(g, FLANGE); rg.push(g);
     }
-    const m = new THREE.Mesh(mergeGeometries(rg, false, 'rings'), steelMat); scene.add(m);
+    const m = new THREE.Mesh(mergeGeometries(rg, false, 'rings'), steelMat); scene.add(m); tunnelHide.push(m);
   }
 
   // honeycomb straightener + screens (alpha-tested textures)
@@ -322,7 +322,7 @@ export function createScene(opts = {}) {
   scene.add(fan);
 
   /* ----------------------------------------------------- glass test section */
-  const glassMeshes = [];
+  const glassMeshes = []; let tunnelOn = true;
   {
     const bg = new THREE.BoxGeometry(X1 - X0, 2 * YH, 2 * ZH);
     const full = bg.index.array, keep = [];               // faces: px nx py ny pz nz (6 indices each); keep roof + both walls
@@ -376,18 +376,23 @@ export function createScene(opts = {}) {
   controls.enableDamping = true; controls.dampingFactor = 0.09; controls.enablePan = false;
   controls.rotateSpeed = 0.7; controls.zoomSpeed = 0.8; controls.minDistance = 0.35; controls.maxDistance = 32;
   controls.minPolarAngle = 0.001;
-  let aspect = 1, focusR = 0.4, userMoved = false, currentPreset = 'overview';
+  let ready0 = true, aspect = 1, focusR = 0.4, userMoved = false, currentPreset = 'overview';
   const tanHalf = Math.tan(camera.fov * DEG / 2);
-  const fit = (hw, hh) => { if (aspect < 0.8) hw = Math.min(hw, 1.5); return Math.max(hh / tanHalf, hw / (tanHalf * aspect)) * 1.08; };   // phones in portrait: frame the middle of the section
+  // vùng trống giữa các bảng (px): khung hình dịch vào giữa vùng đó và khoảng cách camera tính theo vùng đó, để bảng và dock không che mô hình
+  let safe = { l: 0, r: 0, t: 0, b: 0 };
+  const freeSize = () => { const W = Math.max(1, parent.clientWidth), H = Math.max(1, parent.clientHeight); return { W, H, fw: Math.max(140, W - safe.l - safe.r), fh: Math.max(120, H - safe.t - safe.b) }; };
+  const fit = (hw, hh) => { const { W, H, fw, fh } = freeSize(); if (aspect < 0.8) hw = Math.min(hw, 1.5); return Math.max((hh / tanHalf) * (H / fh), (hw / (tanHalf * aspect)) * (W / fw)) * 1.04; };   // điện thoại dọc: lấy giữa đoạn thử
+  function applyOffset() { const { W, H } = freeSize(); camera.setViewOffset(W, H, -(safe.l - safe.r) / 2, -(safe.t - safe.b) / 2, W, H); camera.updateProjectionMatrix(); }
   const P = { tx: 0, ty: 0, tz: 0, dx: 0, dy: 0, dz: 1, dist: 5 };
   function preset(name, o) {
     const dir = (x, y, z, d) => { const l = Math.hypot(x, y, z); o.dx = x / l; o.dy = y / l; o.dz = z / l; o.dist = d; };
     switch (name) {
-      case 'side':   o.tx = 0; o.ty = 0; o.tz = 0; dir(0, 0.04, 1, fit(3.25, 1.05)); break;
-      case 'top':    o.tx = 0; o.ty = 0; o.tz = 0; dir(0, 1, 0.03, fit(3.25, 1.35)); break;
+      case 'close':  o.tx = 0; o.ty = 0; o.tz = 0; { const hw = Math.max(0.7, focusR * 1.55); dir(0.55, 0.3, 0.78, fit(hw, hw * 0.55)); } break;
+      case 'side':   o.tx = 0.1; o.ty = 0; o.tz = 0; { const hw = Math.max(1.7, focusR * 3.2); dir(0, 0.04, 1, fit(hw, hw * 0.42)); } break;
+      case 'top':    o.tx = 0.1; o.ty = 0; o.tz = 0; { const hw = Math.max(1.7, focusR * 3.2); dir(0, 1, 0.03, fit(hw, hw * 0.55)); } break;
       case 'wake':   o.tx = 1.3; o.ty = 0; o.tz = 0; dir(0.8, 0.2, 0.56, fit(1.7, 0.95)); break;
       case 'inside': o.tx = 0.4; o.ty = 0; o.tz = -0.05; { const px = -2.25, py = 0.2, pz = 1.02; dir(px - o.tx, py - o.ty, pz - o.tz, Math.hypot(px - o.tx, py - o.ty, pz - o.tz)); } break;
-      default:       o.tx = 0.1; o.ty = -0.05; o.tz = 0; dir(0.55, 0.32, 0.77, fit(3.45, 1.55));
+      default:       o.tx = 0.12; o.ty = -0.02; o.tz = 0; { const hw = Math.max(1.55, focusR * 2.8); dir(0.55, 0.32, 0.77, fit(hw, hw * 0.5)); }
     }
   }
   const anim = { on: false, t: 0, dur: 0.6, fx: 0, fy: 0, fz: 0, fdx: 0, fdy: 0, fdz: 1, fd: 5, to: { tx: 0, ty: 0, tz: 0, dx: 0, dy: 0, dz: 1, dist: 5 } };
@@ -401,7 +406,7 @@ export function createScene(opts = {}) {
     controls.enabled = false;
   }
   function setCamera(name) {
-    if (!['overview', 'side', 'top', 'wake', 'inside'].includes(name)) name = 'overview';
+    if (!['overview', 'close', 'side', 'top', 'wake', 'inside'].includes(name)) name = 'overview';
     currentPreset = name; userMoved = false;
     preset(name, P); startAnim(P);
   }
@@ -573,7 +578,7 @@ export function createScene(opts = {}) {
     renderer.setSize(w, h, false);
     if (aaRT) { const v = renderer.getDrawingBufferSize(_sz); aaRT.setSize(v.x, v.y); }
     const portrait = h > w; aspect = w / h;
-    camera.aspect = aspect; camera.updateProjectionMatrix();
+    camera.aspect = aspect; applyOffset();
     if (!userMoved) {
       if (anim.on) preset(currentPreset, anim.to);          // re-aim the running animation at the new framing
       else { preset(currentPreset, P); controls.target.set(P.tx, P.ty, P.tz); camera.position.set(P.tx + P.dx * P.dist, Math.max(CAM_MIN_Y, P.ty + P.dy * P.dist), P.tz + P.dz * P.dist); }
@@ -623,7 +628,7 @@ export function createScene(opts = {}) {
     if (o.aa != null && o.aa !== Q.aa) { Q.aa = !!o.aa; applyAA(); }
     if (o.shadows != null && o.shadows !== Q.shadows) { Q.shadows = !!o.shadows; applyShadows(); }
     if (o.env != null && o.env !== Q.env) { Q.env = !!o.env; scene.environment = Q.env ? envTex : null; }
-    if (o.glass != null && o.glass !== Q.glass) { Q.glass = !!o.glass; for (const g of glassMeshes) g.visible = Q.glass; }
+    if (o.glass != null && o.glass !== Q.glass) { Q.glass = !!o.glass; for (const g of glassMeshes) g.visible = Q.glass && tunnelOn; }
     if (o.pace != null) Q.pace = !!o.pace;
     if (rs) resize();
   }
@@ -639,7 +644,9 @@ export function createScene(opts = {}) {
     setCamera, thumbnail, thumbnailNow: renderThumb, raycastMidplane, onFrame, setTier, refocus, setQuality, quality: () => Object.assign({}, Q),
     setWind(uvis) { fanVis = uvis; },
     setStrutTop(y) { strutTarget = y; },
-    setFocusRadius(r) { focusR = Math.max(0.1, r); },
+    setFocusRadius(r) { const n = Math.max(0.1, r), ch = Math.abs(n - focusR) > 1e-4; focusR = n; if (ch && !userMoved && ready0) { preset(currentPreset, P); startAnim(P); } },
+    setSafeArea(a) { const n = { l: a.insetL || 0, r: a.insetR || 0, t: a.insetT || 0, b: a.insetB || 0 }; if (n.l === safe.l && n.r === safe.r && n.t === safe.t && n.b === safe.b) return; safe = n; applyOffset(); if (!userMoved) { preset(currentPreset, P); startAnim(P); } },
+    setTunnel(on) { tunnelOn = on !== false; for (const m of tunnelHide) m.visible = tunnelOn; for (const g of glassMeshes) g.visible = tunnelOn && Q.glass; },
     getTier() { return tier; }, resize, start, stop, setParent,
   };
 }

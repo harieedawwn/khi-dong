@@ -156,7 +156,7 @@ export function init(ctx) {
     root.add(cur.group);
     cur.rot.rotation.z = -state.get().alphaDeg * DEG;
     extAlpha = 1e9; computeExtents(state.get().alphaDeg);
-    scene.setFocusRadius(cur.radius * (model.spanning ? 0.8 : 1));
+    scene.setFocusRadius(model.spanning ? Math.max(0.6, cur.radius * 1.2) : cur.radius);
     applyHeatmap(heatMode, null);          // new model starts neutral; main supplies fields when baked
     arrowsReset = true;
   }
@@ -198,24 +198,26 @@ export function init(ctx) {
     return { g, shaft, head, len: 0, tgt: 0 };
   }
   function makeLabel(textMain, textSub, hex) {
-    const W = 320, Hh = 100, cv = document.createElement('canvas'); cv.width = W; cv.height = Hh;
+    // nhãn "F" + chỉ số dưới "cản" / "nâng": vẽ chỉ số nhỏ hạ thấp bằng phông Be Vietnam Pro (có đủ dấu), không dùng gạch dưới
+    const W = 360, Hh = 100, cv = document.createElement('canvas'); cv.width = W; cv.height = Hh;
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
     const draw = () => {
       const c = cv.getContext('2d'); c.clearRect(0, 0, W, Hh);
-      c.fillStyle = 'rgba(22,24,27,0.82)'; c.beginPath(); c.roundRect ? c.roundRect(2, 12, W - 4, Hh - 24, 14) : c.rect(2, 12, W - 4, Hh - 24); c.fill();
+      c.fillStyle = 'rgba(22,24,27,0.84)'; c.beginPath(); c.roundRect ? c.roundRect(2, 12, W - 4, Hh - 24, 14) : c.rect(2, 12, W - 4, Hh - 24); c.fill();
       c.fillStyle = '#' + hex.toString(16).padStart(6, '0'); c.fillRect(2, 12, 8, Hh - 24);
-      c.textBaseline = 'alphabetic';
-      c.font = '700 56px "Barlow Condensed","Be Vietnam Pro",sans-serif'; c.fillText(textMain, 28, 66);
+      c.textBaseline = 'alphabetic'; c.fillStyle = '#F4F1EA';
+      c.font = '800 54px "Be Vietnam Pro","Segoe UI",Arial,sans-serif'; c.fillText(textMain, 30, 66);
       const w = c.measureText(textMain).width;
-      c.font = '600 36px "Barlow Condensed","Be Vietnam Pro",sans-serif'; c.fillText(textSub, 28 + w + 3, 74);
+      c.font = '800 36px "Be Vietnam Pro","Segoe UI",Arial,sans-serif'; c.fillText(textSub, 30 + w + 4, 78);
       tex.needsUpdate = true;
     };
-    draw(); if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+    draw();
+    if (document.fonts && document.fonts.load) Promise.all([document.fonts.load('800 54px "Be Vietnam Pro"', 'Fcản nâng'), document.fonts.ready]).then(draw, draw);
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
     sp.scale.set(0.3, 0.3 * Hh / W, 1); sp.renderOrder = 20; arrowGroup.add(sp); return sp;
   }
   const aD = makeArrow(ARROW_COL.drag), aL = makeArrow(ARROW_COL.lift);
-  const lD = makeLabel('F', '_cản', ARROW_COL.drag), lL = makeLabel('F', '_nâng', ARROW_COL.lift);
+  const lD = makeLabel('F', 'cản', ARROW_COL.drag), lL = makeLabel('F', 'nâng', ARROW_COL.lift);
   let forcesOn = true, arrowsReset = true, liftSign = 1, tgtD = 0, tgtL = 0;
   const arrowLen = (F) => { F = Math.abs(F); return F > 0 && F === F ? ARROW_MAX * Math.log(1 + F / F0) * ARROW_NORM : 0; };
 

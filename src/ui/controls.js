@@ -5,7 +5,7 @@ import {
   fmtNum, fmtFixed, fmtVal, fmtDeg, parseNum, makePin, makeSnapshot, h, setShown, setText, ensureStyles, NB, C
 } from '../config.js';
 
-const CAMERAS = [['overview', 'Tổng quan'], ['side', 'Cạnh bên'], ['top', 'Từ trên'], ['wake', 'Phía sau'], ['inside', 'Trong ống']];
+const CAMERAS = [['overview', 'Vừa mô hình'], ['close', 'Cận cảnh'], ['side', 'Cạnh bên'], ['top', 'Từ trên'], ['wake', 'Phía sau'], ['inside', 'Trong ống']];
 const SMOKE = [['white', 'Trắng'], ['red', 'Đỏ'], ['blue', 'Xanh'], ['orange', 'Cam'], ['multi', 'Đa sắc']];
 const FLOWS = [['smoke', 'Khói'], ['particles', 'Hạt'], ['vectors', 'Vectơ']];
 
@@ -134,6 +134,8 @@ export function init(ctx) {
   const envBtn = h('button', { type: 'button', class: 'btn', 'aria-expanded': 'false', onClick: () => togglePanel(envPanel, viewPanel) }, 'Không khí');
   const scBtn = h('button', { type: 'button', class: 'btn btn-primary', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onClick: () => toggleMenu() }, 'Thí nghiệm gợi ý');
 
+  let pauseBtn = null;
+  const RATES = [0.25, 0.5, 1];
   const taskText = h('span');
   const taskBox = h('div', { class: 'p8-task', role: 'note', hidden: true, style: 'display:none' },
     taskText,
@@ -155,18 +157,19 @@ export function init(ctx) {
 
   if (dock) {
     dock.textContent = '';
+    // dock gọn: hai thanh trượt song song; hàng nút (mức gió, phát lại, thí nghiệm); phần còn lại nằm sau "Thêm"
+    const playBtns = RATES.map(r => h('button', { type: 'button', class: 'chip', 'data-rate': String(r), 'aria-pressed': 'false', title: 'Tốc độ phát dòng khí', onClick: () => { play('tap'); setView({ rate: r, paused: false }); } }, fmtNum(r, { sig: 2 }) + '×'));
+    pauseBtn = h('button', { type: 'button', class: 'chip', 'aria-pressed': 'false', 'aria-label': 'Tạm dừng dòng khí', onClick: () => { play('toggle'); setView({ paused: !state.get().view.paused }); } }, 'Tạm dừng');
     dock.appendChild(h('div', { class: 'p8-stack' },
       taskBox,
-      h('div', { class: 'p8-stack' },
-        h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Tốc độ gió'), uVal),
-        h('div', { class: 'p8-row' },
-          h('div', { class: 'p8-sw' }, machTickL, machTick, uRange),
-          uNum, h('span', { class: 'p8-lab' }, 'm/s')),
-        h('div', { class: 'p8-chips' }, presetBtns)),
-      h('div', { class: 'p8-stack' },
-        h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Góc tấn α'), aVal),
-        h('div', { class: 'p8-sw' }, zeroTickL, zeroTick, aRange)),
-      h('div', { class: 'p8-row p8-half' }, scBtn, moreBtn),
+      h('div', { class: 'dock-grid' },
+        h('div', { class: 'p8-stack', style: 'gap:2px' },
+          h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Tốc độ gió'), uVal),
+          h('div', { class: 'p8-row' }, h('div', { class: 'p8-sw' }, machTickL, machTick, uRange), uNum, h('span', { class: 'p8-lab' }, 'm/s'))),
+        h('div', { class: 'p8-stack', style: 'gap:2px' },
+          h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Góc tấn α'), aVal),
+          h('div', { class: 'p8-sw' }, zeroTickL, zeroTick, aRange)),
+        h('div', { class: 'dock-row dock-full' }, ...presetBtns, h('span', { class: 'dock-play', role: 'group', 'aria-label': 'Phát dòng khí' }, pauseBtn, ...playBtns), scBtn, moreBtn)),
       extra));
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
       dock.classList.toggle('p8-narrow', dock.clientWidth < 520);
@@ -196,6 +199,7 @@ export function init(ctx) {
   const heatSeg = seg([['off', 'Tắt'], ['pressure', 'Áp suất'], ['friction', 'Ma sát']], v => setView({ heatmap: v }), 'Bản đồ nhiệt');
   const forcesSeg = seg([[true, 'Bật'], [false, 'Tắt']], v => setView({ forces: v }), 'Mũi tên lực');
   const shockSeg = seg([[true, 'Bật'], [false, 'Tắt']], v => setView({ shock: v }), 'Sóng xung kích');
+  const tunnelSeg = seg([[true, 'Hiện'], [false, 'Ẩn']], v => setView({ tunnel: v }), 'Khung và kính ống');
   if (viewPanel) {
     viewPanel.textContent = '';
     viewPanel.appendChild(h('div', { class: 'p8-stack' },
@@ -206,7 +210,8 @@ export function init(ctx) {
       h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Giá phun khói'), rakeSeg.el),
       h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Bản đồ nhiệt'), heatSeg.el),
       h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Mũi tên lực'), forcesSeg.el),
-      h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Sóng xung kích'), shockSeg.el)));
+      h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Sóng xung kích'), shockSeg.el),
+      h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Khung thép và kính ống'), tunnelSeg.el)));
   }
 
   /* ---------- DOM: env panel ---------- */
@@ -389,7 +394,7 @@ export function init(ctx) {
   }
   function syncView() {
     const st = state.get(), v = st.view;
-    flowSeg.set(v.flow); rakeSeg.set(v.rake); heatSeg.set(v.heatmap); forcesSeg.set(!!v.forces); shockSeg.set(!!v.shock);
+    tunnelSeg.set(v.tunnel !== false); flowSeg.set(v.flow); rakeSeg.set(v.rake); heatSeg.set(v.heatmap); forcesSeg.set(!!v.forces); shockSeg.set(!!v.shock);
     for (const [id, b] of smokeBtns) { const on = id === v.smokeColor; b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.classList.toggle('is-active', on); }
     const maxLines = st.tier === 'high' ? 48 : 24;
     linesRange.max = String(maxLines);
@@ -397,6 +402,10 @@ export function init(ctx) {
     setText(densVal, Math.round(v.density * 100) + NB + '%');
     setText(linesVal, String(Math.min(v.lines, maxLines)));
     camSeg.set(st.camera);
+    if (pauseBtn) {
+      pauseBtn.setAttribute('aria-pressed', v.paused ? 'true' : 'false'); pauseBtn.textContent = v.paused ? 'Phát tiếp' : 'Tạm dừng';
+      dock.querySelectorAll('[data-rate]').forEach(b => b.setAttribute('aria-pressed', String(!v.paused && Math.abs(+b.dataset.rate - (v.rate ?? 1)) < 1e-6)));
+    }
   }
   function syncEnv() {
     const e = state.get().env, custom = e.mode === 'custom';

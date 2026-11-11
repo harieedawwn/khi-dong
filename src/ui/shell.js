@@ -17,12 +17,13 @@
 
 import { state as defaultState } from '../state.js';
 
-const SCHOOL = '[THPT TRẦN QUỐC TOẢN]';
+const SCHOOL = 'TRƯỜNG THPT TRẦN QUỐC TOẢN (ĐỒNG THÁP)';
+const TITLE = 'THÍ NGHIỆM ỐNG KHÍ ĐỘNG: LỰC CẢN VÀ LỰC NÂNG';
 const GUIDE_KEY = 'phieu-ongkhidong-guide-v1';
 
 const ASSUMPTIONS = [
-  'Dòng khí tính theo thế vị, thêm mô hình tách dòng và vệt xoáy theo kinh nghiệm.',
-  'Hệ số cản và hệ số nâng lấy từ số liệu thực nghiệm đã công bố.',
+  'Khói ở mặt phẳng giữa là lời giải 2D (lattice-Boltzmann) quanh thiết diện mô hình, ở số Reynolds thu nhỏ theo chế độ dòng; ngoài mặt phẳng dùng dòng thế và vệt hậu theo kinh nghiệm.',
+  'Số đo (C_D, C_L, lực) lấy từ số liệu thực nghiệm đã công bố, không tính từ lời giải 2D.',
   'Mô hình thu nhỏ trong buồng thử kín; bỏ qua ảnh hưởng của vách và mặt đất.',
   'Dòng siêu âm chỉ là mô phỏng; ống khí động siêu âm thật cần vòi phun đặc biệt.',
   'Lực nâng không phải lực đẩy Archimedes: nó đến từ chênh lệch áp suất quanh vật.',
@@ -62,6 +63,7 @@ const ICONS = {
   chart: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',
   pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
   left: '<path d="m15 18-6-6 6-6"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
   right: '<path d="m9 18 6-6-6-6"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
 };
@@ -196,15 +198,13 @@ export function createShell(state) {
 
   const title = el('div', { id: 'title', class: 'title-wrap' });
   const plate = el('div', { class: 'plate' });
-  plate.innerHTML =
-    '<div class="plate__school"></div>' +
-    '<h1 class="plate__title"><span class="t-full">ỐNG KHÍ ĐỘNG · KHẢO SÁT LỰC CẢN VÀ LỰC NÂNG</span><span class="t-short">Ống khí động: Lực cản &amp; lực nâng</span></h1>' +
-    '<svg class="plate__motif" viewBox="0 0 120 12" aria-hidden="true"><path d="M0 1.5H34C46 1.5 50 .5 60 .5S74 1.5 86 1.5H120"/><path d="M0 6H48M72 6H120"/><path d="M0 10.5H34C46 10.5 50 11.5 60 11.5S74 10.5 86 10.5H120"/><ellipse cx="60" cy="6" rx="10" ry="2.6"/></svg>';
-  plate.querySelector('.plate__school').textContent = SCHOOL;
+  plate.append(el('h1', { class: 'plate__title', text: TITLE }));
   title.append(plate);
 
   const stage = el('div', { id: 'stage', class: 'stage' });
   const hud = el('div', { id: 'hud', 'aria-live': 'off' });
+  const school = el('div', { class: 'school', text: SCHOOL });
+  const topRight = el('div', { id: 'topRight' }, [school, hud]);
   const legend = el('div', { id: 'legend' });
   const dock = el('div', { id: 'dock', class: 'panel', role: 'group', 'aria-label': 'Điều khiển gió' });
   const dockWrap = el('div', { class: 'dock-wrap' }, dock);
@@ -222,7 +222,11 @@ export function createShell(state) {
     el('ol', null, ASSUMPTIONS.map(t => el('li', { text: t })))
   ]);
 
-  stage.append(title, hud, legend, dockWrap, tools, viewPanel, envPanel, assume);
+  const edgeL = el('button', { type: 'button', class: 'edge-btn edge-btn--l', id: 'edgeL', 'aria-label': 'Thu gọn bảng mô hình', title: 'Thu gọn / mở bảng mô hình', 'aria-expanded': 'true' }, icon('left'));
+  const edgeR = el('button', { type: 'button', class: 'edge-btn edge-btn--r', id: 'edgeR', 'aria-label': 'Thu gọn bảng số đo', title: 'Thu gọn / mở bảng số đo', 'aria-expanded': 'true' }, icon('right'));
+  const dockTab = el('button', { type: 'button', class: 'dock-tab', id: 'dockTab', 'aria-label': 'Thu gọn bảng điều khiển gió', title: 'Thu gọn / mở điều khiển gió', 'aria-expanded': 'true' }, [icon('down'), el('span', { text: 'Điều khiển gió' })]);
+  dockWrap.prepend(dockTab);
+  stage.append(title, topRight, legend, dockWrap, tools, edgeL, edgeR, viewPanel, envPanel, assume);
 
   const modeTabs = el('div', { id: 'modeTabs', class: 'panel', 'data-guide': 'mode' });
   const modelPanel = el('div', { id: 'modelPanel', class: 'panel' });
@@ -310,6 +314,22 @@ export function createShell(state) {
   });
   const paintFs = () => { btnFull.replaceChildren(icon(fsEl() ? 'minimize' : 'maximize')); btnFull.title = fsEl() ? 'Thoát toàn màn hình' : 'Toàn màn hình'; };
   doc.addEventListener('fullscreenchange', paintFs); doc.addEventListener('webkitfullscreenchange', paintFs);
+
+  /* --- thu gọn bảng bên / dock: bảng không che mô hình --- */
+  const COL_KEY = 'phieu-ongkhidong-cols-v1';
+  const cols = { l: false, r: false, d: false };
+  try { Object.assign(cols, JSON.parse(localStorage.getItem(COL_KEY) || '{}')); } catch (e) { /* không có bộ nhớ */ }
+  function paintCols() {
+    html.classList.toggle('collapse-l', cols.l); html.classList.toggle('collapse-r', cols.r); html.classList.toggle('collapse-d', cols.d);
+    edgeL.setAttribute('aria-expanded', String(!cols.l)); edgeR.setAttribute('aria-expanded', String(!cols.r)); dockTab.setAttribute('aria-expanded', String(!cols.d));
+    edgeL.setAttribute('aria-label', cols.l ? 'Mở bảng mô hình' : 'Thu gọn bảng mô hình'); edgeR.setAttribute('aria-label', cols.r ? 'Mở bảng số đo' : 'Thu gọn bảng số đo');
+    dockTab.setAttribute('aria-label', cols.d ? 'Mở điều khiển gió' : 'Thu gọn điều khiển gió');
+    try { localStorage.setItem(COL_KEY, JSON.stringify(cols)); } catch (e) { /* bỏ qua */ }
+    scheduleSync(); setTimeout(scheduleSync, 340);
+  }
+  edgeL.addEventListener('click', () => { play('tap'); cols.l = !cols.l; paintCols(); });
+  edgeR.addEventListener('click', () => { play('tap'); if (layout === 'tablet') setDrawer(!drawerOpen); else { cols.r = !cols.r; paintCols(); } });
+  dockTab.addEventListener('click', () => { play('tap'); cols.d = !cols.d; paintCols(); });
 
   /* --- layout --- */
   let layout = '', tab = 'model', drawerOpen = false;
@@ -429,26 +449,30 @@ export function createShell(state) {
     const { w } = viewSize();
     let insetL = 0, insetR = 0;
     if (!isPhone()) {
-      insetL = Math.round(colL.getBoundingClientRect().right + 16);
-      if (layout === 'desktop') insetR = Math.round(w - colR.getBoundingClientRect().left + 16);
+      insetL = cols.l ? 12 : Math.round(colL.getBoundingClientRect().right + 16);
+      if (layout === 'desktop') insetR = cols.r ? 12 : Math.round(w - colR.getBoundingClientRect().left + 16);
       else if (layout === 'tablet' && drawerOpen && w >= 900) insetR = Math.round((colR.offsetWidth || 352) + 24);
     }
+    const insetT = Math.round(Math.max(plate.getBoundingClientRect().bottom, layout === 'desktop' ? 0 : topRight.getBoundingClientRect().bottom) + 8), insetB = isPhone() ? 8 : Math.round(innerHeight - dockWrap.getBoundingClientRect().top + 8);
     const root = html.style;
     root.setProperty('--inset-l', insetL + 'px');
     root.setProperty('--inset-r', insetR + 'px');
     root.setProperty('--plate-h', Math.round(plate.getBoundingClientRect().height) + 'px');
+    root.setProperty('--tr-h', Math.round(topRight.getBoundingClientRect().height) + 'px');
+    root.setProperty('--tr-w', Math.round(topRight.getBoundingClientRect().width) + 'px');
+    root.setProperty('--tools-w', Math.round(tools.getBoundingClientRect().width) + 'px');
     root.setProperty('--dock-h', (isPhone() ? 0 : Math.round(dock.getBoundingClientRect().height)) + 'px');
     root.setProperty('--drawer-w', Math.round(colR.getBoundingClientRect().width || 352) + 'px');
     if (openPop && openBtn) positionPop(openPop, openBtn);
     const sr = stage.getBoundingClientRect();
-    state.emit('layout', { layout, insetL, insetR, stageW: Math.round(sr.width), stageH: Math.round(sr.height) });
+    state.emit('layout', { layout, insetL, insetR, insetT, insetB, stageW: Math.round(sr.width), stageH: Math.round(sr.height) });
   }
   window.addEventListener('resize', () => { applyLayout(); scheduleSync(); if (guideOn) renderStep(true); });
   window.addEventListener('orientationchange', () => setTimeout(() => { applyLayout(); scheduleSync(); }, 260));
   if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { applyLayout(); scheduleSync(); });
   if ('ResizeObserver' in window) {
     const ro = new ResizeObserver(scheduleSync);
-    [colL, colR, plate, dock, stage].forEach(n => ro.observe(n));
+    [colL, colR, plate, dock, stage, topRight, tools, dockWrap].forEach(n => ro.observe(n));
   }
 
   /* --- guide (coach marks) --- */
@@ -540,6 +564,7 @@ export function createShell(state) {
 
   /* boot */
   applyLayout();
+  paintCols();
   setTab('model');
   paintFs();
   scheduleSync();
