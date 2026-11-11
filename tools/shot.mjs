@@ -86,7 +86,7 @@ export async function ticks(page, n, dt) {
 }
 
 if (process.argv[1] && process.argv[1].endsWith('shot.mjs')) {
-  const s = await open({ tier: A.tier, browser: A.browser });
+  const s = await open({ tier: A.tier, browser: A.browser, q: A.q ? '&q=' + A.q : '' });
   const { page } = s;
   await setup(page, { ...A, view: A.rake ? { rake: A.rake } : undefined });
   await page.waitForFunction(() => window.__app.ctx.flow.plane.ready(), null, { timeout: 60000 });

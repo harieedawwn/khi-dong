@@ -33,7 +33,9 @@ void main(){
   vec2 p = vUv * uSize - 0.5, i = floor(p), f = p - i;
   f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
   vec4 d = texture2D(uDye, (i + 0.5 + f) / uSize);
-  float a = smoothstep(0.03, 0.62, d.a * uGain);
+  // thin soft filaments: no saturated plateau, a bright thin core that falls off smoothly (real smoke-tunnel photos)
+  float v = clamp(d.a * uGain, 0.0, 1.0);
+  float a = 0.85 * smoothstep(0.05, 0.7, v);
   a *= smoothstep(0.0, 0.02, vUv.x - 0.015) * (1.0 - smoothstep(0.93, 0.995, vUv.x));
   if (a < 0.004) discard;
   vec3 c = mix(uTint, d.rgb / max(d.a, 1e-4), uMulti);
@@ -152,7 +154,7 @@ export function init(ctx) {
     const u = dMat.uniforms; u.uDye.value = tex;
     col.set(HEX[view.smokeColor] || HEX.white); u.uTint.value.set(col.r, col.g, col.b);
     u.uMulti.value = view.smokeColor === 'multi' ? 1 : 0;
-    u.uOpacity.value = fade * (0.45 + 0.55 * view.density); u.uGain.value = 0.8 + 0.6 * view.density;
+    u.uOpacity.value = fade * (0.5 + 0.5 * view.density); u.uGain.value = 1.15 + 0.5 * view.density;
     sheet.visible = true;
   }
 

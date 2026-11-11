@@ -21,7 +21,7 @@ export const MAX_LEVEL = LEVELS.length - 1;
 const HEX = { white: [0.93, 0.92, 0.9], red: [0.82, 0.23, 0.18], blue: [0.18, 0.44, 0.82], orange: [0.91, 0.53, 0.16] };
 const MULTI = [[0.78, 0.35, 0.29], [0.3, 0.5, 0.75], [0.85, 0.61, 0.29], [0.36, 0.64, 0.5], [0.56, 0.45, 0.72], [0.8, 0.73, 0.35]];
 export const TUNE = {
-  reBubble: 28, reStreet: 190, reIrregular: 600, reNone: 300,    // solver Reynolds numbers on the projected height
+  reBubble: 28, reStreet: 190, reSharp: 800, reIrregular: 600, reNone: 300,    // solver Reynolds numbers on the projected height
   slipTurb: 0.85, slipNone: 0.6,                                // wall-model slip: turbulent layer / attached streamlined flow
   cs: 0.22, tauMin: 0.512, kick: 0.02,
 };
@@ -291,7 +291,7 @@ export function createPlane(opts) {
     nozKey = key;
     const a = nozBuf.a, dh = (TUN.y1 - TUN.y0) / dny;
     a.fill(0);
-    const sig = Math.max(0.0035 * (0.7 + 0.6 * dens), 0.62 * dh);
+    const sig = Math.max(0.0022 * (0.7 + 0.6 * dens), 0.42 * dh);      // thin filaments: a few millimetres, never below ~1 dye cell
     for (let l = 0; l < L; l++) {
       const u = (l + 0.5) / L * 2 - 1, y = 0.55 * Math.sign(u) * Math.pow(Math.abs(u), 1.25), c = MULTI[l % 6];
       const j0 = Math.floor((y - 4 * sig - TUN.y0) / dh), j1 = Math.ceil((y + 4 * sig - TUN.y0) / dh);
@@ -342,7 +342,12 @@ export function createPlane(opts) {
     if (pb) { const b = pb.bbox; hp = Math.max((b.x1 - b.x0) * Math.abs(p.sa) + (b.y1 - b.y0) * p.ca, 0.3 * (b.y1 - b.y0)) / win.h; }
     let re = TUNE.reNone, slip = TUNE.slipNone;
     if (p.wake === 1) { re = TUNE.reBubble; slip = 0; }
-    else if (p.wake === 2) { re = p.Re < TUNE.reStreet ? Math.max(p.Re, 50) : TUNE.reStreet; slip = TUNE.slipTurb * p.turb; }
+    else if (p.wake === 2) {
+      // sharp-edged bluff body (plate normal to the flow: fixed separation lines, St 0.14-0.16 in reality) sheds at a lower solver Re so that St stays in 0.17-0.23
+      const sharp = pb && (pb.bbox.x1 - pb.bbox.x0) < 0.25 * (pb.bbox.y1 - pb.bbox.y0);
+      const reS = sharp ? TUNE.reSharp : TUNE.reStreet;
+      re = p.Re < reS ? Math.max(p.Re, 50) : reS; slip = TUNE.slipTurb * p.turb;
+    }
     else if (p.wake === 3) { re = TUNE.reIrregular; slip = TUNE.slipTurb * p.turb; }
     else if (p.Re < 40) { re = Math.max(p.Re, 5); slip = 0; }
     P.tau = Math.max(TUNE.tauMin, 0.5 + 3 * tier.ulb * hp / re); P.slip = slip; P.cs = TUNE.cs;
