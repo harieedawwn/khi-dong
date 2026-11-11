@@ -8,7 +8,8 @@
 - [x] St: trụ 0,21, cầu 0,215, tấm 0,21 (Re bộ giải 800 cho vật cạnh sắc) ở mức 0; ở mức bộ giải 4 tấm phẳng 0,24; giọt nước và cánh 2412 4° không xoáy; cánh 18° tách và xoáy
 - [x] Khói sợi mảnh mềm (smoke.js shader + nozzle sigma)
 - [x] Bộ điều chất lượng src/quality.js (13 bậc) + scene.setQuality; hình học tuần tạo nhẹ; ảnh thu nhỏ từng khung rảnh; watchdog không gây lỗi nghiêm trọng, chỉ hiện thông báo "Chế độ nhẹ" sau 3 lần treo > 4 s
-- [x] Đo: bậc 12 trong SwiftShader 1000x640 ~19 fps có giao diện / ~32 fps không giao diện
-- [ ] Firefox qua Playwright (cần cdn.playwright.dev; đã xin phép mạng)
+- [x] Đo (Chromium SwiftShader 1000x640, bậc 12): 20 fps có giao diện DOM, tác vụ dài ~50-60 ms (một lần đọc đồng bộ 1 điểm ảnh ~30 ms là chi phí cố định của GPU phần mềm); 33 fps và 1 tác vụ dài khi ẩn giao diện. Muốn hết tác vụ > 50 ms cần giảm chi phí hợp thành giao diện DOM (phiên giao diện)
+- [x] Firefox cài được qua Playwright nhưng không tạo được WebGL trong container (FEATURE_FAILURE_WEBGL_EXHAUSTED_DRIVERS): chưa đo được fps Firefox; đã sửa nguyên nhân thật của thông báo treo (Boot.loop không được gọi, resume đặt lastTick)
 - [ ] Tác vụ > 50 ms còn lại ~50-60 ms (chờ GPU) với giao diện DOM; không có khi ẩn giao diện
-- [ ] Bảng ảnh docs/contact-sheet.png, gộp vào main, kiểm tra trang Pages
+- [x] Bảng ảnh docs/contact-sheet.png
+- [ ] Gộp vào main, kiểm tra trang Pages

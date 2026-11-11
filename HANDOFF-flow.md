@@ -20,5 +20,13 @@
 - "Ít nhất 24 ô trên kích thước nhỏ nhất" chỉ đạt với vật tù (cầu, trụ, giọt nước). Cánh: bề dày khoảng 11 ô (dây cung 91 ô); tấm phẳng dày 0,012 m nhỏ hơn 1,5 ô nên được làm dày lên 1,6 ô trong bộ giải.
 - Bước/khung hình bị chặn theo tier (low 960 bước/s). Vật nhỏ ở gió mạnh chạy chậm hơn U_vis danh nghĩa (k < 1; cánh ở 20 m/s k ≈ 0,4).
 - M > 1: bộ giải tắt, không có vết hậu trong mặt phẳng.
-- Bảng NACA 0012 / 2412 trong `src/physics/sections.js` được nhập lại từ trí nhớ về Sheldahl & Klimas và Abbott & von Doenhoff, chưa đối chiếu bản in. Test "tái tạo điểm nguồn" chỉ kiểm phép tra bảng, không kiểm số liệu gốc.
+- Bảng NACA 0012 đã đối chiếu bản in (Sheldahl & Klimas Table 2: mô hình Eppler, thất tốc gấp, ví dụ Re 1,6e5 CL tụt 0,85 → 0,13 giữa 9 và 10 độ). NACA 2412 đọc từ đồ thị NACA Report 824 tr.136 (sai số ~0,04); không có bảng số in. Test "tái tạo điểm nguồn" chỉ kiểm phép tra bảng.
 - Tham số ánh xạ chế độ (`TUNE` trong plane.js: Re bộ giải 28 / 190 / 600 / 300, hệ số trượt thành 0,85 / 0,6) chỉnh bằng mắt trên bản CPU; chưa đo GPU trên điện thoại thật.
+
+## Phiên hiệu năng và sửa lỗi GPU (nhánh nang-cap-dong-chay)
+- Bộ điều chất lượng `src/quality.js` (13 bậc: DPR → khử răng cưa → bóng → môi trường → kính → mức bộ giải 1-4 → số hạt / sợi khói); sở hữu mức bộ giải (`plane.setLevel`, 0-4; bộ điều tốc riêng của plane bị tắt). `ctx.quality.scale` nhân số hạt và số sợi khói. `?q=N` ghim bậc.
+- WebGL phần mềm (SwiftShader, llvmpipe, Microsoft Basic) được nhận diện và bắt đầu ở bậc 12; `scene.setQuality({pace:true})` chặn CPU chạy trước GPU.
+- Đọc vận tốc GPU: `fetchVelocity` đầu khung, `queueVelocity` cuối khung (vòng PBO + fence; không có fence thì đọc trực tiếp mỗi 90 ms).
+- Watchdog trong index.html không còn gây lỗi nghiêm trọng: `Boot.beat()` mỗi khung, 3 lần treo > 4 s mới hiện thông báo "Chế độ nhẹ" (`Boot.onLite`). Nguyên nhân thật của thông báo cũ: `Boot.loop` không bao giờ được gọi, nhưng hàm resume đặt `lastTick`, nên sau mỗi lần ẩn / hiện tab 4 s sau là báo treo.
+- Ảnh thu nhỏ của `scene.thumbnail` xếp hàng, mỗi khung rảnh một ảnh. Firefox trong container này không tạo được WebGL (không có trình điều khiển GL), nên chỉ kiểm được đường báo lỗi không có WebGL.
+- St đo trên GPU (mức 0): trụ 0,21; cầu 0,215; tấm 0,21 (`TUNE.reSharp` 800); mức 4: trụ 0,21, tấm 0,24.
