@@ -1,5 +1,6 @@
 // P1 - Khí động lực: hệ số, lực, chế độ dòng. Hàm thuần, không DOM.
 import { GAMMA } from './atmo.js';
+import { SECTIONS } from './sections.js';
 
 const PI = Math.PI, D2R = PI / 180, GRAV = 9.81;
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -203,20 +204,37 @@ function buildupCoef(def, info, air, U, alpha, M, Re, Aref, Lref) {
     const CN = Math.sin(2 * ar) * Math.cos(ar / 2) * fin(b.baseArea) / Aref + sg * 1.2 * sa * sa * sideB / Aref;
     CL += CN * Math.cos(ar); CD += CN * sa;
   }
+  // Cánh 2D chạy hết ống có số liệu bảng (0012, 2412): CL, CD lấy thẳng từ bảng theo góc tới và Re dây cung
+  let secSt = 0, secStall = false;
+  const secFn = def.section ? SECTIONS[def.section] : null;
+  if (secFn) {
+    const sec = secFn(alpha, Re, SEC), wS2 = sstep((M - 0.9) / 0.3), Mc = Math.min(M, 0.8);
+    const pg = Math.abs(alpha) < sec.stallDeg ? 1 / Math.sqrt(1 - Mc * Mc) : 1;
+    const den = Math.sqrt(Math.max(M * M - 1, 0.44)), tc = 0.12;
+    const clSup = 4 * ar / den, cdSup = (4 * ar * ar + 4 * 0.9 * tc * tc) / den + 0.006;
+    CL = lerp(sec.cl * pg, clSup, wS2);
+    const cdSub = sec.cd * Ks;
+    CD = lerp(cdSub, cdSup, wS2); CDw = lerp(sec.cd * (Ks - 1), cdSup - 0.006, wS2); CDi = 0;
+    surfacesCL.length = 0; for (const w of info.wings || []) surfacesCL.push({ id: w.id, CL });
+    const aa = Math.abs(alpha);
+    stallW = sstep((aa - sec.stallDeg) / 3); fracW = sstep((aa - 0.5 * sec.stallDeg) / (0.5 * sec.stallDeg + 4));
+    secStall = stallW > 0.3; secSt = 0.2;                 // Fage & Johansen: St ~ 0,2 theo chiều cao chiếu c.sin(alpha)
+  }
   const sb = sepBlend(def, Re);
   let sepDeg = sb.sepDeg, cpb = sb.cpb;
   sepDeg = lerp(sepDeg, 90, fracW); cpb = lerp(cpb, -0.7, fracW);
   const bl = blState(cfBlend(Re).w);
   let wake, St = 0, amp = 0;
   const stalled = stallW > 0.3;
-  if (stalled) { wake = 'irregular'; amp = 0.1 * stallW; }
+  if (stalled) { wake = 'irregular'; amp = 0.1 * stallW; St = secStall ? secSt : 0.2; }
   else if (def.st > 0) {
     if (Re >= def.wakeMinRe) { wake = 'street'; St = def.st; amp = def.clAmp || 0; }
     else wake = Re >= 10 ? 'bubble' : 'none';
-  } else wake = sepDeg < 150 ? 'irregular' : 'none';
+  } else wake = !secFn && sepDeg < 150 ? 'irregular' : 'none';
   if (wake === 'irregular' && !stalled) amp = 0.5 * (def.clAmp || 0);
-  return { CD, CL, CDf, CDi, CDw, bl, wake, St, sepDeg, cpb, clAmp: amp, surfacesCL };
+  return { CD, CL, CDf: secFn ? Math.min(CDf, 0.8 * CD) : CDf, CDi, CDw, bl, wake, St, sepDeg, cpb, clAmp: amp, surfacesCL, stalled, turb: cfBlend(Re).w };
 }
+const SEC = { cl: 0, cd: 0, stallDeg: 15 };
 
 /* ---------- đánh giá ---------- */
 export function evaluate({ aeroDef: def, info, air, U, alphaDeg }) {
@@ -249,25 +267,32 @@ export function evaluate({ aeroDef: def, info, air, U, alphaDeg }) {
       else { wake = 'street'; St = def.st || 0.18; }
     }
     const amp = (wake === 'street' || wake === 'irregular') ? lerp(def.clAmp, def.clAmpSuper == null ? def.clAmp : def.clAmpSuper, sb.t) : 0;
-    r = { CD, CL: 0, CDf: Math.min(CD, base * 0.667 / (1 + Re / 100)), CDi: 0, CDw: CD * (1 - 1 / K), bl: blState(sb.t), wake, St, sepDeg: sb.sepDeg, cpb: sb.cpb, clAmp: amp, surfacesCL: [] };
+    r = { CD, CL: 0, CDf: Math.min(CD, base * 0.667 / (1 + Re / 100)), CDi: 0, CDw: CD * (1 - 1 / K), bl: blState(sb.t), wake, St, sepDeg: sb.sepDeg, cpb: sb.cpb, clAmp: amp, surfacesCL: [], turb: sb.t, crisis: sb.t > 0.02 && sb.t < 0.98, postCrit: sb.t >= 0.98 };
   } else if (def.kind === 'plate') {
     const K = dragRiseK(M, def.mach);
     const pc = plateCoef(alpha);
     const CD = pc.CD * K;
     let wake = 'none', St = 0;
     if (Re >= (def.wakeMinRe || 100)) { wake = 'street'; St = def.st || 0.15; } else if (Re >= 10) wake = 'bubble';
-    r = { CD, CL: pc.CL, CDf: 0, CDi: 0, CDw: CD * (1 - 1 / K), bl: blState(cfBlend(Re).w), wake, St, sepDeg: def.sep.lamDeg, cpb: def.sep.cpbLam, clAmp: wake === 'street' ? def.clAmp : 0, surfacesCL: [] };
+    r = { CD, CL: pc.CL, CDf: 0, CDi: 0, CDw: CD * (1 - 1 / K), bl: blState(cfBlend(Re).w), wake, St, sepDeg: def.sep.lamDeg, cpb: def.sep.cpbLam, clAmp: wake === 'street' ? def.clAmp : 0, surfacesCL: [], turb: 0, plate: true };
   } else r = buildupCoef(def, info, air, U, alpha, M, ReC, Aref, Lref);
 
   const CD = clamp(fin(r.CD), 0, 1000), CL = clamp(fin(r.CL), -10, 10);
   const CDf = clamp(fin(r.CDf), 0, CD), CDi = clamp(fin(r.CDi), 0, CD), CDw = clamp(fin(r.CDw), 0, CD);
   const CDp = Math.max(0, CD - CDf - CDi - CDw);
   const FD = q * CD * Aref, FL = q * CL * Aref;
-  const Dshed = fin(info.D) > 1e-6 ? info.D : Math.sqrt(Aref);
+  // Bề rộng tạo xoáy: đường kính; với cánh thất tốc và tấm nghiêng là chiều cao chiếu lên mặt vuông góc dòng khí
+  let Dshed = fin(info.D) > 1e-6 ? info.D : Math.sqrt(Aref);
+  const sA = Math.abs(Math.sin(alpha * D2R)), cA = Math.cos(alpha * D2R);
+  if (r.plate) { const b = info.bbox, H = b ? b.max ? b.max[1] - b.min[1] : fin(b.y1 - b.y0, Dshed) : Dshed, T = b ? b.max ? b.max[0] - b.min[0] : fin(b.x1 - b.x0, 0) : 0; Dshed = Math.max(H * cA + T * sA, 0.05 * H); }
+  else if (r.stalled) { const w0 = (info.wings || [])[0]; if (w0 && w0.chord > 0) Dshed = Math.max(w0.chord * sA + fin(w0.tc, 0.12) * w0.chord * cA, 1e-3); }
   const St = clamp(fin(r.St), 0, 1);
   const p0 = air.p * pitotRatio(M);
   const out = {
     Re, M, q, p0, T0: air.T * (1 + 0.2 * M * M),
+    stagPa: p0 - air.p,                                   // áp suất hãm dư p0 - p_vô cùng (Pa, luôn dương)
+    dragCrisis: !!r.crisis, postCritical: !!r.postCrit,   // đang trong / đã qua khủng hoảng lực cản (cầu, trụ)
+    stalled: !!r.stalled, turb: clamp(fin(r.turb), 0, 1), // cánh thất tốc; tỉ lệ lớp biên rối 0..1
     CD, CL, CDf, CDp, CDi, CDw, FD, FL,
     LD: Math.abs(FD) < 1e-6 ? null : clamp(FL / FD, -200, 200),
     St, fShed: St * U / Dshed, Dshed,

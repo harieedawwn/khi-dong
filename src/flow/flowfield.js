@@ -13,6 +13,8 @@
 //   flow.surfaceData(), flow.gammaND(res), flow._debug
 // shock() returns halfAngle in RADIANS (also halfAngleDeg); planar:true for 2D models.
 
+import { createPlane, shockJump, dipoleAt } from './plane.js';
+
 const PI = Math.PI;
 const DEG = PI / 180;
 const TWO_PI = 2 * PI;
@@ -340,8 +342,12 @@ export function createFlow(opts) {
     M: 0, invb: 1, gnd: 0, needG: false,
     St: 0.2, D: 0.1, Re: 1e5, wake: 0, sepDeg: 180, cpb: -0.2,
     hasRes: false, sepKey: '', simT: 0, phU: 0, nextPh: 0, relIdx: 0, xconv: 0, tAnim: 0, lastD: -1,
-    shockOn: false
+    shockOn: false, turb: 0, kRet: 1, wz0: 0, wz1: 0
   };
+  const plane = opts.plane === false ? null : createPlane({ cpu: opts.planeCpu, governor: opts.planeGovernor });
+  const PP = { alphaDeg: 0, ca: 1, sa: 0, gnd: 0, invb: 1, M: 0, wake: 0, Re: 1e5, turb: 0, shock: null };
+  const pl2 = new Float64Array(2), j3 = new Float64Array(3);
+  let planeSeq = 0;
   const W = {
     xUp: 0, yUp: 0, xLo: 0, yLo: 0, xs: 0, yc: 0, zc: 0, zspan: 0.1,
     xNose: 0, yNose: 0, zNose: 0, nAct: 0, active: false, spanning: false, ampT: 0.04
@@ -353,9 +359,9 @@ export function createFlow(opts) {
   let relSeq = 0;
   const relT = new Float64Array(512); let relN = 0;
   let rng = mulberry32(1234);
-  const SH = { type: 0, planar: false, ax: 0, ay: 0, az: 0, sinT: 0, cosT: 1, xv: 0, Rc: 1, tanMu: 1, cot2: 1 };
+  const SH = { type: 0, planar: false, ax: 0, ay: 0, az: 0, sinT: 0, cosT: 1, xv: 0, Rc: 1, tanMu: 1, cot2: 1, Rn: 0.05, far: 3, key: '' };
   const shockObj = { type: 'cone', apex: [0, 0, 0], halfAngle: 0, halfAngleDeg: 0, standoff: 0, R: 0, planar: false };
-  const probeOut = { speed: 0, cp: 0, p: 0, inWake: false };
+  const probeOut = { speed: 0, speedTrue: 0, cp: 0, p: 0, inWake: false };
   const sc = new Float64Array(9), wk = new Float64Array(3), pv = new Float64Array(3);
 
   // curl-noise modes (fixed seed; wavevectors scaled by the wake diameter in update)
@@ -605,6 +611,73 @@ export function createFlow(opts) {
     return { inp, meta };
   }
 
+  // Mid-plane bake (model frame, z = 0): signed distance of the section and the potential
+  // perturbation fields for unit free stream along x, along y and unit circulation.
+  function* planeGen(m) {
+    const model = m.model, dim2 = m.dim2, bb = m.bbox;
+    const sdf2 = (x, y) => model.sdf(x, y, 0);
+    const Lx0 = bb.x1 - bb.x0, Ly0 = bb.y1 - bb.y0;
+    const hs = Math.max(Lx0, Ly0) / 240, mg = 6 * hs;
+    const snx = Math.ceil((Lx0 + 2 * mg) / hs) + 1, sny = Math.ceil((Ly0 + 2 * mg) / hs) + 1;
+    const sd = new Float32Array(snx * sny);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, cnt = 0;
+    for (let j = 0; j < sny; j++) {
+      const y = bb.y0 - mg + j * hs;
+      for (let i = 0; i < snx; i++) {
+        const x = bb.x0 - mg + i * hs, d = sdf2(x, y);
+        sd[j * snx + i] = d;
+        if (d < 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if ((++cnt & 255) === 0) yield 0;
+      }
+    }
+    const empty = !(x1 > x0);
+    let area = 0, cxs = 0, cys = 0;
+    if (empty) { x0 = bb.x0; x1 = bb.x1; y0 = bb.y0; y1 = bb.y1; }
+    else {
+      for (let j = 0; j < sny; j++) for (let i = 0; i < snx; i++) if (sd[j * snx + i] < 0) { area++; cxs += bb.x0 - mg + i * hs; cys += bb.y0 - mg + j * hs; }
+      cxs /= area; cys /= area; area *= hs * hs;
+      x0 -= 0.5 * hs; x1 += 0.5 * hs; y0 -= 0.5 * hs; y1 += 0.5 * hs;
+    }
+    const Lx = x1 - x0, Ly = y1 - y0, Sc = Math.max(Ly, Lx / 3);
+    // equivalent ellipse of the section (same area, same aspect) for the 2D far field
+    const fE = empty ? 0 : clamp(Math.sqrt(area / (PI * 0.25 * Lx * Ly)), 0.6, 1.13);
+    const dip = { xc: empty ? 0 : cxs, yc: empty ? 0 : cys, a: 0.5 * Lx * fE, b: 0.5 * Ly * fE, rc2: Math.pow(0.55 * Math.max(Lx, Ly), 2) };
+    const fx0 = x0 - 1.2 * Sc, fx1 = x1 + 1.6 * Sc, fy0 = y0 - 1.2 * Sc, fy1 = y1 + 1.2 * Sc;
+    const hf = Math.max(fx1 - fx0, fy1 - fy0) / 191;
+    const fnx = Math.ceil((fx1 - fx0) / hf) + 1, fny = Math.ceil((fy1 - fy0) / hf) + 1;
+    const fd = new Float32Array(fnx * fny * 6), t9 = new Float64Array(9), d2 = new Float64Array(2);
+    const marg = 0.6 * hf, e = 0.25 * hf;
+    for (let j = 0; j < fny; j++) {
+      for (let i = 0; i < fnx; i++) {
+        const xn = fx0 + i * hf, yn = fy0 + j * hf;
+        let x = xn, y = yn;
+        const d = empty ? 1 : sdf2(x, y);
+        if (d < marg) {                       // inside or too close: evaluate just outside the surface
+          let gx = sdf2(x + e, y) - sdf2(x - e, y), gy = sdf2(x, y + e) - sdf2(x, y - e);
+          const gl = Math.hypot(gx, gy);
+          if (gl > 1e-12) { gx /= gl; gy /= gl; x += gx * (marg - d); y += gy * (marg - d); }
+        }
+        m.evalAt(x, y, 0, t9, !dim2);
+        const o = (j * fnx + i) * 6;
+        let big = 0;
+        for (let c = 0; c < 9; c++) if (Math.abs(t9[c]) > big) big = Math.abs(t9[c]);
+        const k = big > 4 ? 4 / big : 1;      // guard against near-source spikes
+        fd[o] = t9[0] * k; fd[o + 1] = t9[1] * k; fd[o + 2] = t9[3] * k; fd[o + 3] = t9[4] * k; fd[o + 4] = t9[6] * k; fd[o + 5] = t9[7] * k;
+        if (dim2) {                           // 2D models: the grid stores exact - section dipole (the dipole is added analytically everywhere)
+          dipoleAt(dip, xn, yn, 1, 0, d2); fd[o] -= d2[0]; fd[o + 1] -= d2[1];
+          dipoleAt(dip, xn, yn, 0, 1, d2); fd[o + 2] -= d2[0]; fd[o + 3] -= d2[1];
+        }
+        if ((++cnt & 31) === 0) yield 0;
+      }
+    }
+    return {
+      id: ++planeSeq, dim2, empty, bbox: { x0, x1, y0, y1 }, dip,
+      sdf: { x0: bb.x0 - mg, y0: bb.y0 - mg, h: hs, nx: snx, ny: sny, d: sd },
+      field: { x0: fx0, y0: fy0, h: hf, nx: fnx, ny: fny, d: fd },
+      vort: dim2 ? Float32Array.from(m.v2) : new Float32Array(0),
+    };
+  }
+
   function drive(gen, job) {
     return new Promise((resolve) => {
       function tick() {
@@ -675,7 +748,20 @@ export function createFlow(opts) {
         meta.hasLines = vort !== null; meta.needG = vort !== null; meta.trivial = false;
         state = meta;
       }
+      state.pb = null;
+      if (plane !== null) {
+        plane.setBake(null);
+        if (!state.trivial) {
+          const pb = await drive(planeGen(state), job);
+          if (job.cancelled || pb === null) return false;
+          state.pb = pb;
+        }
+      }
       cur = state;
+      if (plane !== null) {
+        plane.setBake(state.pb);
+        const hz = 0.5 * (state.Dz || 0.2); R.wz0 = Math.max(0.01, 0.12 * hz); R.wz1 = Math.max(0.04, 0.55 * hz);
+      }
       resetWake();
       R.gnd = 0; R.needG = false;
       if (activeJob === job) activeJob = null;
@@ -714,6 +800,8 @@ export function createFlow(opts) {
     R.wake = res.regime && WAKE_CODE[res.regime.wake] !== undefined ? WAKE_CODE[res.regime.wake] : 0;
     R.sepDeg = Number.isFinite(res.sepDeg) ? res.sepDeg : 180;
     R.cpb = Number.isFinite(res.cpb) ? res.cpb : -0.2;
+    const blName = res.regime ? res.regime.bl : '';
+    R.turb = Number.isFinite(res.turb) ? res.turb : blName === 'turbulent' ? 1 : blName === 'transition' ? 0.5 : 0;
     R.q = res.q > 0 ? res.q : 0;
     const T0 = res.T0 > 0 ? res.T0 : 288.15;
     const f = 1 + 0.2 * M * M;
@@ -789,6 +877,8 @@ export function createFlow(opts) {
       shockObj.apex[0] = SH.xv; shockObj.apex[1] = W.yNose; shockObj.apex[2] = W.zNose;
     }
     shockObj.halfAngleDeg = shockObj.halfAngle / DEG;
+    SH.Rn = m.noseR; SH.far = 3 * m.L;
+    SH.key = SH.type + '|' + SH.ax.toFixed(4) + '|' + SH.xv.toFixed(4) + '|' + SH.ay.toFixed(4) + '|' + SH.sinT.toFixed(4);
     R.shockOn = true;
   }
 
@@ -853,13 +943,15 @@ export function createFlow(opts) {
     const a = alphaDeg * DEG;
     if (a !== R.alphaRad) { R.alphaRad = a; R.ca = Math.cos(a); R.sa = Math.sin(a); }
     const m = cur;
-    if (m === null || m.trivial || !res) { W.active = false; R.shockOn = false; return; }
+    const Unom = Uvis / R.kRet; R.kRet = 1;
+    if (m === null || m.trivial || !res) { W.active = false; R.shockOn = false; if (plane !== null && res) planeUpdate(alphaDeg, Unom, dt); return; }
     R.gnd = gammaND(res);
     R.needG = m.needG && Math.abs(R.gnd) > 1e-12;
     const key = alphaDeg + '|' + R.sepDeg + '|' + (m.aeroDef && m.aeroDef.sep ? m.aeroDef.sep.mode : '');
     if (key !== R.sepKey) { R.sepKey = key; computeSep(a); }
     updateShock();
     W.active = true;
+    if (plane !== null) planeUpdate(alphaDeg, Unom, dt);
     if (!(dt > 0)) { packVortices(); return; }
     if (dt > 0.1) dt = 0.1;
     const D = R.D;
@@ -888,6 +980,13 @@ export function createFlow(opts) {
       }
     }
     packVortices();
+  }
+
+  function planeUpdate(alphaDeg, Unom, dt) {
+    const m = cur;
+    PP.alphaDeg = alphaDeg; PP.ca = R.ca; PP.sa = R.sa; PP.gnd = m && m.needG ? R.gnd : 0; PP.invb = R.invb; PP.M = R.M;
+    PP.wake = R.wake; PP.Re = R.Re; PP.turb = R.turb; PP.shock = R.shockOn ? SH : null;
+    plane.update(PP, Unom, dt);
   }
 
   /* --------------------------- wake sampling ----------------------------- */
@@ -1018,6 +1117,18 @@ export function createFlow(opts) {
     const Uv = R.Uvis;
     if (m === null || m.trivial) { out[0] = Uv; out[1] = 0; out[2] = 0; return out; }
     const ca = R.ca, sa = R.sa;
+    // mid-plane: the live solver field, blended into the analytic field off the plane and at the window edges
+    let pw = 0;
+    if (plane !== null && m.pb) {
+      pw = plane.weight(x, y);
+      if (pw > 0) {
+        if (!m.dim2) { const az = z < 0 ? -z : z; pw *= az <= R.wz0 ? 1 : az >= R.wz1 ? 0 : 1 - smooth01((az - R.wz0) / (R.wz1 - R.wz0)); }
+        if (pw > 0) {
+          plane.velAt(x, y, pl2);
+          if (pw > 0.999) { out[0] = Uv * pl2[0]; out[1] = Uv * pl2[1] + 0; out[2] = 0; return out; }
+        }
+      }
+    }
     const mx = x * ca - y * sa, my = x * sa + y * ca;
     const dim2 = m.dim2;
     const g = m.grid;
@@ -1054,12 +1165,20 @@ export function createFlow(opts) {
     const pz = k * (ca * sc[2] + sa * sc[5] + gnd * sc[8]);
     let wx = px * ca + py * sa, wy = -px * sa + py * ca, wz = pz;
     if (W.active) {
-      addWake(x, y, z);
-      wx += wk[0]; wy += wk[1]; wz += wk[2];
+      // the scripted wake is for off-plane use only where the solver runs
+      let ws = 1;
+      if (plane !== null && m.pb && plane.active()) { if (dim2) ws = 0; else { const az = z < 0 ? -z : z; ws = az <= R.wz0 ? 0 : az >= R.wz1 ? 1 : smooth01((az - R.wz0) / (R.wz1 - R.wz0)); } }
+      if (ws > 0) { addWake(x, y, z); wx += ws * wk[0]; wy += ws * wk[1]; wz += ws * wk[2]; }
     }
     if (R.shockOn) {
-      const gt = shockGate(x, y, z);
-      wx *= gt; wy *= gt; wz *= gt;
+      // nothing upstream; behind the shock the Rankine-Hugoniot jump (normal velocity / density ratio)
+      const gt = shockJump(SH, R.M, x, y, z, j3);
+      wx = wx * gt + Uv * j3[0]; wy = wy * gt + Uv * j3[1]; wz = wz * gt + Uv * j3[2];
+    }
+    if (pw > 0) {
+      const ax = Uv + wx;
+      out[0] = ax + pw * (Uv * pl2[0] - ax); out[1] = wy + pw * (Uv * pl2[1] - wy); out[2] = wz * (1 - pw) + 0;
+      return out;
     }
     out[0] = Uv + wx; out[1] = wy + 0; out[2] = wz + 0; // +0 normalises -0
     return out;
@@ -1069,7 +1188,9 @@ export function createFlow(opts) {
     sample(x, y, z, pv);
     const sv = Math.sqrt(pv[0] * pv[0] + pv[1] * pv[1] + pv[2] * pv[2]);
     const Uv = Math.max(R.Uvis, 1e-9);
-    probeOut.speed = sv * (R.U / Uv);
+    // speed is in visual m/s like sample() (the UI multiplies by U / U_vis, see config.PROBE_SPEED_IS_VISUAL);
+    // it used to be the true speed already, so the displayed value was scaled twice. speedTrue is in real m/s.
+    probeOut.speed = sv; probeOut.speedTrue = sv * (R.U / Uv);
     const r = sv / Uv;
     probeOut.cp = 1 - r * r;
     probeOut.p = R.pInf + R.q * probeOut.cp;
@@ -1103,6 +1224,9 @@ export function createFlow(opts) {
     probe,
     surfaceData() { return cur; },
     gammaND,
+    plane,
+    // visual time scale k <= 1 of the mid-plane solver; the caller multiplies U_vis by it (see SPEC 5)
+    visScale() { R.kRet = plane !== null ? plane.visScale() : 1; return R.kRet; },
     _debug: dbg
   };
 }

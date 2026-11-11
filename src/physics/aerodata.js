@@ -35,10 +35,10 @@ export const AERO = {
   heli: mk({ cdRef: 0.45, reRef: 1e6, sep: ANG(100, 110, -0.25, -0.2), mach: { mdd: 0.6, kpeak: 2.0, kinf: 1.8 },
     source: 'CD 0.45 theo diện tích chính diện cho thân trực thăng (số liệu thân + cánh quạt đứng yên).' }),
   /* cánh 2D (spanning) */
-  wing_0012: mk({ Lref: 'chord', Aref: 'planform', sep: ANG(160, 170, -0.1, -0.1, 5e5), lifting: [wingEntry(0, 1, 0.12)], mach: { mdd: 0.75, kpeak: 1.8, kinf: 1.0 },
-    source: 'NACA 0012: dốc lực nâng 6.0/rad (Abbott & von Doenhofff), CLmax tăng theo Re, tách dòng ~15 độ.' }),
-  wing_2412: mk({ Lref: 'chord', Aref: 'planform', sep: ANG(160, 170, -0.1, -0.1, 5e5), lifting: [wingEntry(-2.1, 1, 0.12)], mach: { mdd: 0.75, kpeak: 1.8, kinf: 1.0 },
-    source: 'NACA 2412: góc nâng bằng 0 là -2.1 độ, dốc 6.0/rad (Abbott & von Doenhoff), tách dòng ~15 độ.' }),
+  wing_0012: mk({ section: '0012', Lref: 'chord', Aref: 'planform', sep: ANG(160, 170, -0.1, -0.1, 5e5), lifting: [wingEntry(0, 1, 0.12)], mach: { mdd: 0.75, kpeak: 1.8, kinf: 1.0 },
+    source: 'NACA 0012: bảng CL, CD 0-90 độ theo Re của Sheldahl & Klimas (SAND80-2114).' }),
+  wing_2412: mk({ section: '2412', Lref: 'chord', Aref: 'planform', sep: ANG(160, 170, -0.1, -0.1, 5e5), lifting: [wingEntry(-2.1, 1, 0.12)], mach: { mdd: 0.75, kpeak: 1.8, kinf: 1.0 },
+    source: 'NACA 2412: bảng Abbott & von Doenhoff (Re 3,1e6) đến thất tốc ~16 độ, nối sau thất tốc theo Sheldahl & Klimas.' }),
   wing_wedge: mk({ Lref: 'chord', Aref: 'planform', sep: ANG(160, 170, -0.1, -0.1, 5e5), nose: 'sharp', lifting: [wingEntry(0, 1, 0.05, true)], mach: { mdd: 0.9, kpeak: 1, kinf: 1 },
     source: 'Cánh nêm mỏng t/c 0.05 mép nhọn; siêu âm theo lý thuyết Ackeret (CL = 4 alpha / sqrt(M^2-1)).' }),
   /* xe đua */
