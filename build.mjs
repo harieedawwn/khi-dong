@@ -28,5 +28,13 @@ const link = /<link rel="stylesheet" href="src\/styles\.css[^"]*">/;
 if (!link.test(html)) throw new Error('index.html không có thẻ link styles.css');
 html = html.replace(link, () => `<style>\n${css}\n</style>`);
 html = html.replace(/<script src="app\.js[^"]*" defer><\/script>/, `<script src="app.js?v=${stamp}" defer></script>`);
+// ảnh thu nhỏ tĩnh (assets/thumbs/*.webp) + C_D@20 m/s nhúng thành window.__THUMBS = {id: {url, cd}}
+const td = path.join(root, 'assets/thumbs'), thumbs = {};
+if (fs.existsSync(td)) {
+  const cdj = fs.existsSync(path.join(td, 'cd.json')) ? JSON.parse(fs.readFileSync(path.join(td, 'cd.json'), 'utf8')) : {};
+  for (const f of fs.readdirSync(td).filter((n) => n.endsWith('.webp'))) { const id = f.slice(0, -5); thumbs[id] = { url: 'data:image/webp;base64,' + fs.readFileSync(path.join(td, f)).toString('base64'), cd: cdj[id] ?? null }; }
+}
+if (!html.includes('</head>')) throw new Error('index.html không có </head>');
+html = html.replace('</head>', () => `<script>window.__THUMBS=${JSON.stringify(thumbs)};</script>\n</head>`);
 fs.writeFileSync(path.join(dist, 'index.html'), html);
 console.log('dist/ xong: app.js', (fs.statSync(path.join(dist, 'app.js')).size / 1024).toFixed(0), 'KB; index.html', (fs.statSync(path.join(dist, 'index.html')).size / 1024).toFixed(0), 'KB');

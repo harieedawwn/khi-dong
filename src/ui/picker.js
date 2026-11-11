@@ -12,7 +12,7 @@ const CSS = `
 .pk-card{display:flex;flex-direction:column;gap:4px;min-width:0;padding:4px;text-align:left;cursor:pointer;touch-action:manipulation;font:inherit;color:inherit;background:var(--paper,#F4F1EA);border:1px solid var(--line,rgba(27,29,33,.14));border-radius:6px;transition:border-color 160ms cubic-bezier(.2,.7,.2,1),box-shadow 160ms cubic-bezier(.2,.7,.2,1)}
 .pk-card:hover{border-color:var(--muted,#5E636B)}
 .pk-card[aria-pressed="true"]{border-color:var(--red,#C8102E);box-shadow:inset 0 0 0 1px var(--red,#C8102E)}
-.pk-thumb{position:relative;aspect-ratio:16/10;border-radius:4px;overflow:hidden;background:#20242A}
+.pk-thumb{position:relative;aspect-ratio:16/10;border-radius:4px;overflow:hidden;background:#DCDFE3}
 .pk-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity 200ms cubic-bezier(.2,.7,.2,1)}
 .pk-thumb img.ok{opacity:1}
 .pk-name{font-size:12.5px;line-height:1.3;font-weight:600;overflow-wrap:anywhere}
@@ -20,6 +20,7 @@ const CSS = `
 .pk-note{flex:0 0 auto;font-size:12px;line-height:1.4;color:var(--muted,#5E636B);min-height:1.4em}
 @media (pointer:coarse){.pk-groups .chip{min-height:44px}}
 `;
+const STATIC = (typeof window !== 'undefined' && window.__THUMBS) || {};
 const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d).replace('.', ',') : '—');
 
 export function init(ctx) {
@@ -55,6 +56,8 @@ export function init(ctx) {
         const job = queue.shift(); if (job.tk !== token && !job.card.isConnected) continue;
         await new Promise(r => schedule(r));
         if (cache.has(job.e.id)) { paint(job.card, job.e.id); continue; }
+        const st = STATIC[job.e.id]; // ảnh dựng sẵn lúc đóng gói: không dựng mô hình lúc chạy
+        if (st && st.url) { cache.set(job.e.id, { cd: st.cd == null ? NaN : st.cd, url: st.url }); paint(job.card, job.e.id); continue; }
         try {
           const model = ctx.assemble(job.e.build()), air = ctx.atmo.air({ mode: 'altitude', h: 0, T: 288.15, p: 101325 });
           let cd = NaN; try { cd = ctx.aero.evaluate({ aeroDef: ctx.aerodata.AERO[job.e.id], info: model.info, air, U: 20, alphaDeg: 0 }).CD; } catch (err) { /* thiếu dữ liệu khí động: huy hiệu "—" */ }

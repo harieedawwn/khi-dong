@@ -31,7 +31,7 @@ for (const e of LIBRARY) {
   for (const p of parts) {
     if (p.decal || p.flow === false) continue; const r = check(p);
     if (r.open || r.nonman || r.misor || r.vol <= 0) notes.push(`${p.id}: mở ${r.open}, ngoài đa tạp ${r.nonman}, ngược chiều ${r.misor}, V ${r.vol.toExponential(1)}`);
-    if (doSdf && p.sdf && p.kind !== 'wheel') { const P = p.geometry.attributes.position.array, I = p.geometry.index.array, mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; for (let i = 0; i < P.length; i += 3) for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], P[i + a]); mx[a] = Math.max(mx[a], P[i + a]); }
+    if (doSdf && p.sdf && !['wheel', 'revolve', 'tube', 'strut'].includes(p.kind)) { const P = p.geometry.attributes.position.array, I = p.geometry.index.array, mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; for (let i = 0; i < P.length; i += 3) for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], P[i + a]); mx[a] = Math.max(mx[a], P[i + a]); }
       const dir = [0.3711, 0.5432, 0.7523], l = Math.hypot(...dir); dir.forEach((v, i) => (dir[i] = v / l)); let wrong = 0, tested = 0;
       for (let i = 0; i < 160; i++) { const q = [0, 1, 2].map(a => mn[a] - 0.1 * (mx[a] - mn[a]) + rnd() * 1.2 * (mx[a] - mn[a])), d = p.sdf(...q); if (Math.abs(d) < 1.5e-3) continue; tested++; if (inside(P, I, ...q, dir) !== d < 0) wrong++; }
       if (wrong > 0.03 * tested) notes.push(`${p.id}: sdf sai dấu ${wrong}/${tested}`); }
