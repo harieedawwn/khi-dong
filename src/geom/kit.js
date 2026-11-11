@@ -65,7 +65,7 @@ export function carHull(F, o) {
   const lerp2 = (a, b, g) => [a[0] + (b[0] - a[0]) * g, a[1] + (b[1] - a[1]) * g];
   const secReal = x => {
     const w = wH(x), top = yT(x), belt = yS(x), fl = yB(x), hh = Math.max(0.01, top - belt), g = sstep((hh - g0) / (g1 - g0));
-    const ya = archY(x), yL = Math.min(belt - 0.12, Math.max(fl, ya)), zi = Math.max(0.2, (o.zi ?? 0.62) * Math.min(1, w / 0.9)), dY = belt - yL;
+    const ya = archY(x), yL = Math.max(fl, Math.min(belt - 0.12, Math.max(fl, ya))), zi = Math.max(0.2, (o.zi ?? 0.62) * Math.min(1, w / 0.9)), dY = belt - yL;
     const wgb = w - ledge, wgt = Math.max(0.2, wgb - tumble * hh);
     const hood = [[w - 0.01, belt + 0.15 * hh], [w - hoodR, belt + 0.8 * hh], [w * 0.80, top - 0.1 * hh], [w * 0.60, top - 0.03 * hh], [w * 0.30, top], [0, top]];
     const gh = [[wgb, belt + 0.02], lerp2([wgb, belt + 0.02], [wgt, top], 0.82), [wgt, top], [wgt - rr, top], [wgt * 0.45, top], [0, top]];
