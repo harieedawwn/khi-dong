@@ -20,5 +20,5 @@ for (const id of ids) {
   rows.push(files); console.log(id, r.ms + ' ms', r.v + ' đỉnh');
 }
 await s.close();
-fs.writeFileSync('shots/look/list.json', JSON.stringify({ rows, px, out }));
+fs.writeFileSync('shots/look/list.json', JSON.stringify({ rows, px, out, grid: +(A.grid || 0), ids }));
 execFileSync('python3', ['-I', 'tools/look.py'], { stdio: 'inherit' });

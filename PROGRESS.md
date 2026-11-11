@@ -7,23 +7,26 @@ Công cụ mới: `tools/look.mjs` (ảnh kiểm tra nhiều hướng nhìn, kh�
 ## 1. Mô hình (src/geom/parts.js, hull.js, kit.js, library.js, assemble.js)
 - [x] Nền: hull (tiết diện B-spline, sdf nội suy), panel (kính/đèn chiếu lên bề mặt, decal không tính diện tích), strut, tube, revolve, wheel (lốp + vành + nan hoa + đĩa); assemble có bảng màu theo mô hình (parts.palette) + 8 tông + thuộc tính mat (độ nhám/kim loại); modelview + scene dùng makeModelMaterial
 - [x] Xe đường bộ: sedan, SUV, xe tải thùng, xe tải ốp gió, xe đua thể thao (proto)
-- [ ] Máy bay: airliner, fighter, glider, prop
-- [ ] Trực thăng, F1 (halo, sidepod, cánh nhiều tầng)
-- [ ] Tên lửa (cánh biên dạng, vòi phun), khoang tàu; màu sơn cho hình học cơ bản (kích thước SPEC §6 giữ nguyên)
-- [ ] Mọi mô hình <= 40k đỉnh, meshcheck sạch, geom.test + physics.test xanh, bảng CD@20 giống stats0
-- [ ] docs/models-contact-sheet.png
+- [x] Máy bay: airliner, fighter, glider, prop
+- [x] Trực thăng, F1 (halo, sidepod, cánh nhiều tầng)
+- [x] Tên lửa (cánh biên dạng, vòi phun), khoang tàu; màu sơn cho hình học cơ bản (kích thước SPEC §6 giữ nguyên)
+- [x] Mọi mô hình <= 40k đỉnh, meshcheck sạch, geom.test + physics.test xanh, bảng CD@20 giống stats0
+- [x] docs/models-contact-sheet.png
 
 ## 2. Ảnh thu nhỏ tĩnh: tools/thumbs.mjs -> assets/thumbs/<id>.webp (<= 8 KB), build.mjs nhúng, picker dùng ảnh
-- [ ] làm
+- [x] làm
 
 ## 3. Tiêu đề: hộp trắng bo tròn giữa trên, tên trường đỏ phải trên, khung số đo ngay dưới; Be Vietnam Pro 800; điện thoại
-- [ ] làm
+- [x] làm
 
 ## 4. Nhìn rõ: bảng bên thu gọn được, dock gọn, tự khớp khung hình + chế độ cận cảnh, ẩn khung + kính ống, tốc độ phát 0,25x-1x + tạm dừng, nhãn mũi tên lực đúng tiếng Việt
-- [ ] làm
+- [x] làm
 
 ## 5. HANDOFF-flow: Áp suất hãm dư p0 − p∞, fShed khi > 0, huy hiệu (khủng hoảng lực cản / thất tốc / sau tới hạn), lời dẫn kịch bản siêu âm, đồ thị theo thời gian đặt lại khi đổi mô hình
-- [ ] làm
+- [x] làm
 
 ## 6. QA Playwright 360x740, 844x390, 768x1024, 1366x768, 1920x1080; cập nhật ACCEPTANCE.md; đẩy main; kiểm tra Pages
-- [ ] làm
+- [x] làm
+
+## Đã làm xong (phiên này)
+Tất cả mục trên đã đạt; xem ACCEPTANCE.md. Việc sau: thử điện thoại thật; sdf bánh/ống chính xác hơn; HUD làm tròn F nhỏ về 0.

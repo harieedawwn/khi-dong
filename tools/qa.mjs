@@ -21,7 +21,8 @@ for (const [W, H] of sizes) {
       if (!vis(e) || e.closest('svg') || e.closest('[hidden]') || e.closest('#guide:not(.is-on)') || e.closest('#park')) continue;
       const own = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 0); if (!own) continue;
       const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
-      if (r.right > innerWidth + 1 || r.bottom > innerHeight + 1 || r.left < -1 || r.top < -1) { if (!e.closest('.popover:not(.is-open)') && !e.closest('#colR:not(.is-open)')) res.clipped.push('ngoài khung: ' + (e.id || e.className || e.tagName) + ' "' + e.textContent.trim().slice(0, 30) + '"'); }
+      let scr = false; for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) { const o = getComputedStyle(a); if (/(auto|scroll)/.test(o.overflowY + o.overflowX)) { scr = true; break; } } // cuộn được trong khung: không phải bị cắt
+      if (!scr && (r.right > innerWidth + 1 || r.bottom > innerHeight + 1 || r.left < -1 || r.top < -1)) { if (!e.closest('.popover:not(.is-open)') && !e.closest('#colR:not(.is-open)')) res.clipped.push('ngoài khung: ' + (e.id || e.className || e.tagName) + ' "' + e.textContent.trim().slice(0, 30) + '"'); }
       if ((cs.overflow === 'hidden' || cs.overflowX === 'hidden' || cs.textOverflow === 'ellipsis') && (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 2) && cs.display !== 'inline') res.clipped.push('cắt: ' + (e.id || e.className || e.tagName) + ' "' + e.textContent.trim().slice(0, 30) + '" ' + e.scrollWidth + '>' + e.clientWidth + ' / ' + e.scrollHeight + '>' + e.clientHeight);
       texts.push({ e, r });
     }

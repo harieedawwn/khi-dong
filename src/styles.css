@@ -440,3 +440,5 @@ html[data-layout="tablet"] .dock-wrap { padding-right: calc(var(--tools-w) + 16p
 .p8-badges { display: flex; flex-wrap: wrap; gap: 4px; min-height: 0; }
 .p8-badges:empty { display: none; }
 .badge--warn { background: #FFF1C2; border-color: #D98E04; color: #6B4A00; text-transform: none; letter-spacing: 0; font-family: var(--font-ui); font-size: var(--fs-xs); font-weight: 600; }
+.p8-tile .p8-tile-v .p8-w { display: block; margin-left: 0; line-height: 1.3; }
+.p8-tile .p8-tile-v .p8-w:empty { display: none; }

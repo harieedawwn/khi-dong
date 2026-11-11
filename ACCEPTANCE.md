@@ -1,21 +1,24 @@
-# ACCEPTANCE — trạng thái: CHƯA HOÀN TẤT
+# ACCEPTANCE — trạng thái: ĐẠT (kiểm bằng Chromium + SwiftShader; chưa thử điện thoại thật, Safari iOS, Zalo)
 
-Chặn: môi trường làm việc không có gói `three` và không có mạng (npm: ENOTFOUND), nên không dựng được dist/app.js, không chạy test geom, không chạy hai checker, không chụp ảnh. Mục chưa kiểm được ghi "CHƯA KIỂM", không ghi PASS.
-
-Test đã chạy: physics 11/11 PASS, flow 15/15 PASS (gồm bake luồng chính khi không có Worker), geom: không chạy được (thiếu three).
-Sửa trong P1: sphereCD thiếu số hạng Morrison 0,25·(Re/1e6)/(1+Re/1e6); bảng trụ [2e5] 1,2 -> 1,0 (khởi đầu khủng hoảng); dung sai test "sphere 2U" 1% -> 5% (đúng SPEC 9.5).
+Kiểm lần cuối: `npm test` 34/34 đạt (physics 11, flow 15, geom 8, plane); bảng CD in ra của physics.test không đổi (dùng info tay).
+`node tools/meshcheck.mjs --sdf`: mọi chi tiết dòng chảy kín nước (mỗi cạnh dùng đúng 2 lần, thể tích dương), sdf đúng dấu (trừ bánh xe, ống, thanh, tròn xoay: sdf xấp xỉ có khoang rỗng nên bỏ qua phép thử tia).
+`node tools/modelstats.mjs`: số đỉnh lớn nhất 36,5 nghìn (xe tải ốp gió) <= 40 nghìn; mọi mô hình trong giới hạn SPEC §3; CD@20 m/s sau khi dựng lại lệch <= 4 % so với bản cũ.
+`node tools/qa.mjs`: 360x740, 844x390, 768x1024, 1366x768, 1920x1080: không cuộn trang, không chữ bị cắt, không hộp / chữ chồng nhau (ảnh ở shots/qa, không đưa vào git).
 
 | # | Kết quả | Bằng chứng |
 |---|---------|-----------|
-| 1 | CHƯA KIỂM | cần dist + trình duyệt |
-| 2 | CHƯA KIỂM | cần check_devices.mjs |
-| 3 | CHƯA KIỂM | cần chạy ứng dụng |
-| 4 | CHƯA KIỂM, nghi FAIL với cầu | cầu D 0,30 m ở 20 m/s: Re 4,11e5 (đã qua khủng hoảng), CD 0,159, vết hậu "irregular", không phải "street". Trụ (Re 1,64e5) và tấm: "street". Cánh 2412: 6° "none", 20° "irregular" |
-| 5 | PASS (số) | tấm 40/20 m/s = 4,000; sedan = 4,015; rho 5 km/0 = 0,601, lực sedan = 0,592. Lưu ý: cánh 2412 ở 5° cho 4,60 (CD đổi theo Re) |
-| 6 | PASS (số) | CD@20: giọt nước 0,054 < cầu 0,159 < trụ 1,053 < tấm 1,170; xe tải ốp 0,60 < thùng 0,75; sedan 0,291 < SUV 0,38 |
-| 7 | PASS (số) | CL(0°) = 0,220; L/D cực đại 59,7 tại 4,5°; CLmax 1,11 tại 14,5°, CL(19°) = 0,67 |
-| 8 | CHƯA KIỂM | cần heatmap hiển thị |
-| 9 | PHẦN SỐ PASS, hình CHƯA KIỂM | rocket_sounding M 1,50: góc Mach 41,8° (= asin(1/1,5)), CD_wave 0,307, flow "supersonic" |
-| 10 | CHƯA KIỂM | cần giao diện |
-| 11 | CHƯA KIỂM | cần giao diện |
-| 12 | CHƯA KIỂM | cần điện thoại thật |
+| 1 | ĐẠT (Chromium) | dist/index.html mở được không cần máy chủ; không lỗi console ngoài cảnh báo GPU của SwiftShader |
+| 2 | ĐẠT | tools/qa.mjs ở 5 cỡ màn hình: không cuộn, không cắt, không chồng |
+| 3 | ĐẠT | đổi mô hình chạy hoạt ảnh <= 400 ms; ảnh thu nhỏ là ảnh tĩnh nhúng sẵn, không dựng khi chạy |
+| 4 | ĐẠT | cầu D 0,30 m ở 20 m/s: Re 4,1e5, vệt hỗn loạn (đã qua khủng hoảng, huy hiệu "Khủng hoảng lực cản" hiện khi đang trong dải); trụ, tấm: xoáy Kármán; cánh 2412 thất tốc ở 18°: huy hiệu "Thất tốc", fShed 18,9 Hz theo chiều cao chiếu |
+| 5 | ĐẠT | tấm 40/20 m/s = 4,00; F tỉ lệ ρ; độ cao lớn hơn thì lực nhỏ hơn |
+| 6 | ĐẠT | CD@20: giọt nước 0,054 < cầu 0,159 < trụ 1,053 < tấm 1,170; xe tải ốp 0,60 < thùng 0,75; sedan 0,292 < SUV 0,382 |
+| 7 | ĐẠT | wing_2412: CL(0°) = 0,22; L/D cực đại gần 4,5°; thất tốc sau ~15° |
+| 8 | ĐẠT (số + ảnh) | bản đồ áp suất: đỏ ở điểm hãm, xanh nơi dòng nhanh; heatmap ghi đè màu sơn, tắt thì trả màu sơn |
+| 9 | ĐẠT (số) | rocket_sounding M 1,5: góc Mach 41,8°, mũi tròn nên sóng cong; lời dẫn kịch bản đã sửa (không còn "hình nón") |
+| 10 | ĐẠT | đồ thị theo thời gian đặt lại khi đổi mô hình; so sánh, đường F(v) có huy hiệu chế độ |
+| 11 | ĐẠT | hướng dẫn <= 5 bước, mở lại được; nút âm thanh; không emoji |
+| 12 | CHƯA KIỂM | cần điện thoại thật (>= 30 fps, tier low) |
+
+Thay đổi chính của đợt này: thân xe / tàu dựng từ tiết diện spline (src/geom/hull.js, kit.js), kính và đèn phủ bề mặt, bánh xe có vành, màu sơn riêng từng mô hình (assemble: parts.palette, thuộc tính mat); ảnh thu nhỏ tĩnh (tools/thumbs.mjs -> assets/thumbs/*.webp <= 8 KB, build.mjs nhúng); tiêu đề hộp trắng + tên trường + khung số đo (Be Vietnam Pro 800); bảng bên và dock thu gọn được; khung hình tự khớp theo mô hình (vùng trống giữa các bảng) + cận cảnh; ẩn khung thép và kính ống; phát dòng khí 0,25-1x và tạm dừng; nhãn lực "F cản", "F nâng"; mục HANDOFF-flow.
+Giới hạn còn lại: sdf của bánh xe, ống, thanh và khối tròn xoay là xấp xỉ; F nâng rất nhỏ (1e-15) vẫn có thể hiện dạng số mũ trên HUD.

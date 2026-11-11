@@ -507,7 +507,7 @@ export function createScene(opts = {}) {
     if (src.attributes.mat) g.setAttribute('aMat', src.attributes.mat);
     if (src.index) g.setIndex(src.index);
     g.computeBoundingBox(); th.box.copy(g.boundingBox); th.box.getCenter(th.ctr); th.box.getSize(th.sz);
-    const rad = Math.max(0.05, th.sz.length() / 2), dist = rad / Math.sin(th.cam.fov * DEG / 2) * (view === "34" || view === "34r" ? 0.9 : 0.97);
+    const rad = Math.max(0.05, th.sz.length() / 2), dist = rad / Math.sin(th.cam.fov * DEG / 2) * (view === "34" || view === "34r" ? 1.1 : 0.97);
     const dv = THUMB_DIR[view] || THUMB_DIR['34'];
     th.cam.position.set(th.ctr.x + dv[0] * dist, th.ctr.y + dv[1] * dist, th.ctr.z + dv[2] * dist).sub(th.ctr).setLength(dist).add(th.ctr);
     th.cam.lookAt(th.ctr); th.cam.updateMatrixWorld();

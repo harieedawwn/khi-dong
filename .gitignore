@@ -2,3 +2,6 @@ dist/
 node_modules/
 shots/_*.png
 shots/sheet/
+shots/look/
+shots/thumbs/
+shots/qa*/
