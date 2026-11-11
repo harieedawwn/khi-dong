@@ -377,8 +377,9 @@ html[data-layout="phone-l"] .tabbar > button svg { width: 22px; height: 22px; }
 .plate__title { margin: 0; font-family: var(--font-title); font-weight: 800; color: var(--red); text-transform: uppercase; letter-spacing: .01em;
   font-size: clamp(.82rem, 1.38vw, 1.22rem); line-height: 1.3; text-wrap: balance; }
 #topRight { position: absolute; z-index: 13; top: 12px; right: calc(16px + var(--sar)); width: clamp(19rem, 25vw, 24rem); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
-.school { font-family: var(--font-title); font-weight: 800; color: var(--red); text-transform: uppercase; font-size: clamp(.7rem, .95vw, .84rem); line-height: 1.3; text-align: right; letter-spacing: .01em;
-  text-shadow: 0 0 7px rgba(255, 255, 255, .30), 0 1px 3px rgba(0, 0, 0, .8); }
+.school { position: relative; pointer-events: auto; max-width: 100%; box-sizing: border-box; padding: .5rem .9rem .5rem 1.05rem; background: #fff8ec; border-radius: 12px; border: 1px solid rgba(200, 16, 46, .55); border-left: 6px solid var(--red);
+  font-family: var(--font-title); font-weight: 800; color: var(--red); text-transform: uppercase; font-size: clamp(.8rem, 1.12vw, 1.02rem); line-height: 1.3; text-align: left; letter-spacing: .01em; text-wrap: balance;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 8px 22px rgba(0, 0, 0, .28); }
 #topRight #hud { position: static; max-width: 100%; }
 #hud .p8-hud { justify-content: flex-end; }
 .toolbar { position: absolute; z-index: 16; top: 12px; left: calc(16px + var(--sal)); display: flex; gap: 6px; padding: 4px; }
@@ -424,7 +425,8 @@ html[data-layout="tablet"] .plate, html[data-layout^="phone"] .plate { width: 10
 html[data-layout="tablet"] .plate__title { font-size: clamp(.82rem, 2.4vw, 1.15rem); }
 html[data-layout^="phone"] .plate__title { font-size: clamp(.72rem, 3.7vw, .95rem); line-height: 1.25; }
 html[data-layout="tablet"] #topRight, html[data-layout^="phone"] #topRight { top: calc(8px + var(--plate-h) + 6px); right: 8px; left: 8px; width: auto; gap: 4px; }
-html[data-layout^="phone"] .school { font-size: .62rem; }
+html[data-layout^="phone"] .school { font-size: .66rem; padding: .3rem .6rem .3rem .7rem; border-left-width: 5px; border-radius: 10px; align-self: stretch; text-align: center; }
+html[data-layout="tablet"] .school { align-self: stretch; text-align: center; font-size: .82rem; }
 html[data-layout^="phone"] #hud, html[data-layout="tablet"] #hud { font-size: var(--fs-xs); }
 html[data-layout="tablet"] .toolbar, html[data-layout^="phone"] .toolbar { top: auto; left: auto; right: 8px; bottom: 8px; flex-direction: row; gap: 4px; padding: 2px; }
 html[data-layout^="phone"] .toolbar .icon-btn { width: 36px; height: 36px; min-width: 36px; }
