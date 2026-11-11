@@ -62,7 +62,7 @@ export function createScene(opts = {}) {
   let tier = opts.tier === 'high' ? 'high' : 'low';
   let parent = opts.parent || ensureStage();
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   renderer.setClearColor(HALL, 1);
   renderer.toneMapping = THREE.NoToneMapping;          // exact palette (SPEC §8)
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -79,7 +79,16 @@ export function createScene(opts = {}) {
   scene.background = new THREE.Color(HALL);
   scene.fog = new THREE.Fog(HALL, 12, 38);   // distances follow the camera distance (stepCamera), so the model is never fogged
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environment = envTex;
+  const Q = { dpr: 1, aa: false, shadows: false, env: true, glass: true, pace: false }, _sz = new THREE.Vector2();
+  let aaRT = null;
+  // full-screen copy of the multisampled target to the canvas (three encodes sRGB on screen output)
+  const blitCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), blitScene = new THREE.Scene();
+  const blitMat = new THREE.ShaderMaterial({ depthTest: false, depthWrite: false, uniforms: { tMap: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: 'uniform sampler2D tMap; varying vec2 vUv; void main(){ gl_FragColor = texture2D(tMap, vUv);\n#include <colorspace_fragment>\n}' });
+  { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3)); const m = new THREE.Mesh(g, blitMat); m.frustumCulled = false; blitScene.add(m); }
   scene.environmentIntensity = 0.3;
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 200);
@@ -111,7 +120,8 @@ export function createScene(opts = {}) {
   }
   function box(w, h, d, x, y, z, hex, r = 0.006) {
     const rr = Math.min(r, w * 0.49, h * 0.49, d * 0.49);
-    const g = new RoundedBoxGeometry(w, h, d, 2, rr);
+    const g = rr > 0.01 ? new RoundedBoxGeometry(w, h, d, 1, rr) : new THREE.BoxGeometry(w, h, d);   // small bevels are invisible: plain boxes (12 triangles)
+    if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
     g.translate(x, y, z); paint(g, hex); steelGeos.push(g);
   }
   function cyl(rt, rb, h, seg, x, y, z, hex, axis = 'y') {
@@ -119,7 +129,7 @@ export function createScene(opts = {}) {
     if (axis === 'x') g.rotateZ(-Math.PI / 2); else if (axis === 'z') g.rotateX(Math.PI / 2);
     g.translate(x, y, z); paint(g, hex); steelGeos.push(g);
   }
-  function bolt(x, y, z, axis) { cyl(0.014, 0.014, 0.01, 6, x, y, z, 0xB4BBC2, axis); }
+  function bolt(x, y, z, axis) { cyl(0.014, 0.014, 0.01, 5, x, y, z, 0xB4BBC2, axis); }
 
   /* ---------------------------------------------- steel frame (one draw call) */
   const FRAME = 0x6A727C, FLANGE = 0x8A929B, LEG = 0x474E56, DARK = 0x2B2F35;
@@ -197,7 +207,7 @@ export function createScene(opts = {}) {
   for (const g of steelGeos) g.dispose();
 
   /* ------------------------------------------------ contraction + diffuser */
-  const K = 96;
+  const K = 48;
   function ringPos(k, zz, yy, c, R, out, o, x) {
     const p = (k / K) * 4, side = Math.min(3, Math.floor(p)), f = p - side;
     let u, v;
@@ -224,10 +234,10 @@ export function createScene(opts = {}) {
   }
   const CX0 = -6.4, CZ0 = 2.0, CY0 = 1.45;
   const sm = (t) => t * t * (3 - 2 * t);
-  const contraction = loft(CX0, X0, 24, (t, s) => { const e = sm(t); s.zz = CZ0 + (ZH - CZ0) * e; s.yy = CY0 + (YH - CY0) * e; s.c = 0; });
+  const contraction = loft(CX0, X0, 12, (t, s) => { const e = sm(t); s.zz = CZ0 + (ZH - CZ0) * e; s.yy = CY0 + (YH - CY0) * e; s.c = 0; });
   const R_F = 1.15, DX1 = 5.4, HX1 = 6.3;
-  const dif = loft(X1, DX1, 24, (t, s) => { const e = sm(t); s.zz = ZH + (R_F - ZH) * e; s.yy = YH + (R_F - YH) * e; s.c = e; s.R = R_F; });
-  const housing = loft(DX1, HX1, 4, (t, s) => { s.zz = R_F; s.yy = R_F; s.c = 1; s.R = R_F; });
+  const dif = loft(X1, DX1, 12, (t, s) => { const e = sm(t); s.zz = ZH + (R_F - ZH) * e; s.yy = YH + (R_F - YH) * e; s.c = e; s.R = R_F; });
+  const housing = loft(DX1, HX1, 2, (t, s) => { s.zz = R_F; s.yy = R_F; s.c = 1; s.R = R_F; });
   const duct = new THREE.Mesh(mergeGeometries([contraction], false, 'contraction'),
     new THREE.MeshStandardMaterial({ color: 0x7F8A96, metalness: 0.35, roughness: 0.55, side: THREE.DoubleSide }));
   const diffuser = new THREE.Mesh(mergeGeometries([dif, housing], false, 'diffuser'),
@@ -237,7 +247,7 @@ export function createScene(opts = {}) {
   {
     const rg = [];
     for (const x of [DX1, HX1]) {
-      const g = new THREE.TorusGeometry(R_F + 0.01, 0.035, 8, 64); g.rotateY(Math.PI / 2); g.translate(x, 0, 0); paint(g, FLANGE); rg.push(g);
+      const g = new THREE.TorusGeometry(R_F + 0.01, 0.035, 6, 40); g.rotateY(Math.PI / 2); g.translate(x, 0, 0); paint(g, FLANGE); rg.push(g);
     }
     const m = new THREE.Mesh(mergeGeometries(rg, false, 'rings'), steelMat); scene.add(m);
   }
@@ -275,7 +285,7 @@ export function createScene(opts = {}) {
   const fan = new THREE.Group(); fan.position.set(5.75, 0, 0);
   {
     const parts = [];
-    const hub = new THREE.CylinderGeometry(0.17, 0.2, 0.34, 24); hub.rotateZ(Math.PI / 2); paint(hub, 0x444B53); parts.push(hub);
+    const hub = new THREE.CylinderGeometry(0.17, 0.2, 0.34, 16); hub.rotateZ(Math.PI / 2); paint(hub, 0x444B53); parts.push(hub);
     for (let i = 0; i < 7; i++) {
       const b = new THREE.BoxGeometry(0.17, 0.9, 0.012, 1, 4, 1); b.rotateY(0.45); b.translate(0, 0.18 + 0.45, 0);
       b.rotateX(i * 2 * Math.PI / 7); paint(b, 0x363C43); parts.push(b);
@@ -283,7 +293,7 @@ export function createScene(opts = {}) {
     for (const g of parts) { if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); }
     const fm = new THREE.Mesh(mergeGeometries(parts, false, 'fan'), new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.5, roughness: 0.45, side: THREE.DoubleSide }));
     fan.add(fm);
-    const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.8, 24).rotateZ(Math.PI / 2).translate(0.55, 0, 0),
+    const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.8, 16).rotateZ(Math.PI / 2).translate(0.55, 0, 0),
       new THREE.MeshStandardMaterial({ color: 0x4A525B, metalness: 0.5, roughness: 0.45 }));
     scene.add(nac); nac.position.x = 5.75;
     for (const a of [0, 1, 2, 3]) { // stator struts
@@ -295,6 +305,7 @@ export function createScene(opts = {}) {
   scene.add(fan);
 
   /* ----------------------------------------------------- glass test section */
+  const glassMeshes = [];
   {
     const bg = new THREE.BoxGeometry(X1 - X0, 2 * YH, 2 * ZH);
     const full = bg.index.array, keep = [];               // faces: px nx py ny pz nz (6 indices each); keep roof + both walls
@@ -304,7 +315,7 @@ export function createScene(opts = {}) {
     const mk = (side, op) => new THREE.MeshStandardMaterial({ color: 0xBFD8E2, metalness: 0, roughness: 0.06, transparent: true, opacity: op, side, depthWrite: false });
     const back = new THREE.Mesh(g, mk(THREE.BackSide, 0.07)); back.renderOrder = 1;
     const front = new THREE.Mesh(g, mk(THREE.FrontSide, 0.045)); front.renderOrder = 6;
-    scene.add(back, front);
+    scene.add(back, front); glassMeshes.push(back, front);
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(bg), new THREE.LineBasicMaterial({ color: 0xE6F0F4, transparent: true, opacity: 0.8, depthWrite: false }));
     edges.renderOrder = 7; scene.add(edges);
   }
@@ -332,7 +343,7 @@ export function createScene(opts = {}) {
   scene.add(hallFloor);
 
   /* -------------------------------------------------------------- strut */
-  const strutGeo = new THREE.CylinderGeometry(1, 1, 1, 20).translate(0, 0.5, 0);   // unit, scaled below
+  const strutGeo = new THREE.CylinderGeometry(1, 1, 1, 12).translate(0, 0.5, 0);   // unit, scaled below
   const strut = new THREE.Mesh(strutGeo, new THREE.MeshStandardMaterial({ color: 0xB6BCC3, metalness: 0.8, roughness: 0.33 }));
   strut.castShadow = true;
   scene.add(strut);
@@ -434,9 +445,29 @@ export function createScene(opts = {}) {
 
   /* ----------------------------------------------------------- thumbnails */
   let th = null; const thumbCache = new WeakMap(), thumbRT = new Map();
+  // Thumbnails are rendered one per idle frame (a frame shorter than THUMB_IDLE_S), or one per THUMB_FORCE_S when frames are never idle,
+  // never all at once: 23 synchronous readPixels in one task froze slow / software WebGL for seconds.
+  const THUMB_IDLE_S = 0.045, THUMB_FORCE_S = 1.5, thumbQ = [], thumbPending = new Map(); let thumbLast = 0;
   function thumbnail(model, px = 128) {
+    px = Math.min(px, 256);
     let m = thumbCache.get(model); if (!m) { m = new Map(); thumbCache.set(model, m); }
     if (m.has(px)) return Promise.resolve(m.get(px));
+    let pm = thumbPending.get(model); if (!pm) { pm = new Map(); thumbPending.set(model, pm); }
+    if (pm.has(px)) return pm.get(px).promise;
+    const job = { model, px }; job.promise = new Promise((res, rej) => { job.res = res; job.rej = rej; });
+    pm.set(px, job); thumbQ.push(job); thumbLast = thumbLast || performance.now();
+    return job.promise;
+  }
+  function thumbStep() {
+    const job = thumbQ.shift(); if (!job) return;
+    thumbLast = performance.now();
+    try { job.res(renderThumb(job.model, job.px)); } catch (e) { job.rej(e); }
+    const pm = thumbPending.get(job.model); if (pm) { pm.delete(job.px); if (!pm.size) thumbPending.delete(job.model); }
+  }
+  setInterval(() => { if (thumbQ.length && !document.hidden && performance.now() - thumbLast > THUMB_FORCE_S * 1000) thumbStep(); }, 500);
+  function renderThumb(model, px) {
+    let m = thumbCache.get(model); if (!m) { m = new Map(); thumbCache.set(model, m); }
+    if (m.has(px)) return m.get(px);
     if (!th) {
       const s = new THREE.Scene();
       s.add(new THREE.HemisphereLight(0xFFFFFF, 0x8A9099, 1.15));
@@ -452,8 +483,9 @@ export function createScene(opts = {}) {
     th.cam.position.set(th.ctr.x - 0.45 * dist, th.ctr.y + 0.4 * dist, th.ctr.z + 0.95 * dist).sub(th.ctr).setLength(dist).add(th.ctr);
     th.cam.lookAt(th.ctr); th.cam.updateMatrixWorld();
     th.mesh.geometry = g;
-    let rt = thumbRT.get(px);
-    if (!rt) { rt = new THREE.WebGLRenderTarget(px, px, { samples: 4, type: THREE.UnsignedByteType }); rt.texture.colorSpace = THREE.SRGBColorSpace; thumbRT.set(px, rt); }
+    const ms = Q.aa ? 4 : 0, rkey = px + ':' + ms;
+    let rt = thumbRT.get(rkey);
+    if (!rt) { rt = new THREE.WebGLRenderTarget(px, px, { samples: ms, type: THREE.UnsignedByteType }); rt.texture.colorSpace = THREE.SRGBColorSpace; thumbRT.set(rkey, rt); }
     const oc = new THREE.Color(), oa = renderer.getClearAlpha(); renderer.getClearColor(oc);
     renderer.setRenderTarget(rt); renderer.setClearColor(0xD9DBDE, 0); renderer.clear(); renderer.render(th.s, th.cam);
     const buf = new Uint8Array(px * px * 4); renderer.readRenderTargetPixels(rt, 0, 0, px, px, buf);
@@ -464,12 +496,22 @@ export function createScene(opts = {}) {
     const cv = document.createElement('canvas'); cv.width = cv.height = px;
     cv.getContext('2d').putImageData(new ImageData(out, px, px), 0, 0);
     const url = cv.toDataURL('image/png'); m.set(px, url);
-    return Promise.resolve(url);
+    return url;
   }
 
   /* ------------------------------------------------------------ loop etc. */
   const frameCbs = []; let fanVis = 0, raf = 0, last = 0, running = false;
   function onFrame(fn) { frameCbs.push(fn); return () => { const i = frameCbs.indexOf(fn); if (i >= 0) frameCbs.splice(i, 1); }; }
+  // Software GL has no vsync and no back pressure: the CPU runs many frames ahead of the GPU and every later synchronous call (read-backs)
+  // then waits for the whole backlog (hundreds of ms in one task). One tiny blocking read at the start of the frame keeps the backlog at
+  // one frame, so no task is longer than the GPU needs for a frame.
+  let pacerRT = null; const pacerBuf = new Uint8Array(4);
+  function pace() {
+    try {
+      if (!pacerRT) { pacerRT = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false }); renderer.setRenderTarget(pacerRT); renderer.clear(); renderer.setRenderTarget(null); }
+      renderer.readRenderTargetPixels(pacerRT, 0, 0, 1, 1, pacerBuf);
+    } catch (e) { Q.pace = false; }
+  }
   let errShown = false;
   function reportFrameError(where, e) {
     console.error('[' + where + ']', e);
@@ -481,15 +523,20 @@ export function createScene(opts = {}) {
   }
   function frame(t) {
     raf = requestAnimationFrame(frame);
-    const dt = Math.min(0.1, Math.max(0, (t - last) / 1000)); last = t;
+    if (Q.pace) pace();
+    const raw = Math.max(0, (t - last) / 1000), dt = Math.min(0.1, raw); last = t;
     for (let i = 0; i < frameCbs.length; i++) {
-      try { frameCbs[i](dt); } catch (e) { reportFrameError('frame#' + i, e); }
+      try { frameCbs[i](dt, raw); } catch (e) { reportFrameError('frame#' + i, e); }
     }
     try {
       if (strutTarget !== strutTop) { strutTop = strutTarget; applyStrut(); }
       fan.rotation.x += Math.min(fanVis * 3, 12) * dt;
       stepCamera(dt);
-      renderer.render(scene, camera);
+      if (aaRT) {
+        renderer.setRenderTarget(aaRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
+        blitMat.uniforms.tMap.value = aaRT.texture; const ac = renderer.autoClear; renderer.autoClear = false; renderer.render(blitScene, blitCam); renderer.autoClear = ac;
+      } else renderer.render(scene, camera);
+      if (thumbQ.length && raw < THUMB_IDLE_S) thumbStep();   // one thumbnail per idle frame
     } catch (e) { reportFrameError('render', e); }
   }
   function start() { if (running) return; running = true; last = performance.now(); raf = requestAnimationFrame(frame); }
@@ -498,8 +545,9 @@ export function createScene(opts = {}) {
 
   function resize() {
     const w = Math.max(1, parent.clientWidth), h = Math.max(1, parent.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, DPR_CAP[tier]));
+    renderer.setPixelRatio(Math.max(0.35, Math.min(window.devicePixelRatio || 1, DPR_CAP[tier]) * Q.dpr));
     renderer.setSize(w, h, false);
+    if (aaRT) { const v = renderer.getDrawingBufferSize(_sz); aaRT.setSize(v.x, v.y); }
     const portrait = h > w; aspect = w / h;
     camera.aspect = aspect; camera.updateProjectionMatrix();
     if (!userMoved) {
@@ -523,10 +571,37 @@ export function createScene(opts = {}) {
 
   function setTier(t) {
     tier = t === 'high' ? 'high' : 'low';
-    renderer.shadowMap.enabled = tier === 'high'; key.castShadow = tier === 'high';
-    if (tier === 'high' && !key.shadow.map) key.shadow.mapSize.set(2048, 2048);
-    scene.traverse((o) => { if (o.material) { for (const m of [].concat(o.material)) m.needsUpdate = true; } });
+    Q.shadows = tier === 'high'; Q.aa = tier === 'high';
+    applyShadows(); applyAA();
     resize();
+  }
+
+  /* ---------------------------------------------------- quality (governor) */
+  // dpr: scale on the tier's pixel-ratio cap; aa: 4x multisampled render target + blit; shadows; env: image based light; glass: the two glass passes
+  function applyShadows() {
+    const on = Q.shadows && tier === 'high';
+    if (renderer.shadowMap.enabled === on && key.castShadow === on) return;
+    renderer.shadowMap.enabled = on; key.castShadow = on;
+    if (on && !key.shadow.map) key.shadow.mapSize.set(2048, 2048);
+    scene.traverse((o) => { if (o.material) { for (const m of [].concat(o.material)) m.needsUpdate = true; } });
+  }
+  function applyAA() {
+    if (Q.aa && !aaRT) {
+      aaRT = new THREE.WebGLRenderTarget(4, 4, { samples: 4, type: THREE.UnsignedByteType, depthBuffer: true, stencilBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+      aaRT.texture.colorSpace = THREE.SRGBColorSpace;
+      const v = renderer.getDrawingBufferSize(_sz); aaRT.setSize(v.x, v.y);
+    } else if (!Q.aa && aaRT) { aaRT.dispose(); aaRT = null; }
+  }
+  function setQuality(p) {
+    const o = Object.assign({}, p);
+    let rs = false;
+    if (o.dpr != null && Math.abs(o.dpr - Q.dpr) > 1e-3) { Q.dpr = o.dpr; rs = true; }
+    if (o.aa != null && o.aa !== Q.aa) { Q.aa = !!o.aa; applyAA(); }
+    if (o.shadows != null && o.shadows !== Q.shadows) { Q.shadows = !!o.shadows; applyShadows(); }
+    if (o.env != null && o.env !== Q.env) { Q.env = !!o.env; scene.environment = Q.env ? envTex : null; }
+    if (o.glass != null && o.glass !== Q.glass) { Q.glass = !!o.glass; for (const g of glassMeshes) g.visible = Q.glass; }
+    if (o.pace != null) Q.pace = !!o.pace;
+    if (rs) resize();
   }
 
   setTier(tier);
@@ -537,7 +612,7 @@ export function createScene(opts = {}) {
 
   return {
     three: THREE, renderer, scene, camera, root, controls, canvas,
-    setCamera, thumbnail, raycastMidplane, onFrame, setTier, refocus,
+    setCamera, thumbnail, raycastMidplane, onFrame, setTier, refocus, setQuality, quality: () => Object.assign({}, Q),
     setWind(uvis) { fanVis = uvis; },
     setStrutTop(y) { strutTarget = y; },
     setFocusRadius(r) { focusR = Math.max(0.1, r); },

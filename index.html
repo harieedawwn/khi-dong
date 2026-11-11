@@ -24,6 +24,8 @@
  * API (window.Boot)
  *  Boot.guard(fn, label)      -> wrapped fn; errors inside are fatal (overlay with Reload/Copy/Close)
  *  Boot.loop(fn)              -> requestAnimationFrame loop with dt (seconds, clamped), guarded + watchdog
+ *  Boot.beat()                call every frame from the main loop (arms the stall watchdog: notice "Chế độ nhẹ" after 3 stalls > 4 s, never fatal)
+ *  Boot.onLite(fn)           fn(true) when the user accepts "Chế độ nhẹ"
  *  Boot.onPause(fn)/onResume(fn)  page hidden / visible again
  *  Boot.store.get(k, def) / Boot.store.set(k, v)   JSON localStorage that never throws
  *  Boot.watchCanvas(canvas)   handle webglcontextlost (shows reload overlay)
@@ -123,6 +125,7 @@
     body: 'Bấm "Tải lại". Nếu lỗi lặp lại, bấm "Sao chép" và gửi nội dung cho người phát triển.',
     reload: 'Tải lại', copy: 'Sao chép', copied: 'Đã chép', close: 'Đóng',
     stalled: 'Ứng dụng ngừng phản hồi',
+    slowMsg: 'Máy đang chạy chậm. Bật chế độ nhẹ để hình mượt hơn?', lite: 'Chế độ nhẹ', hide: 'Ẩn',
     gpu: 'Mất kết nối đồ họa (WebGL). Bấm "Tải lại".'
   };
   var overlayShown = false;
@@ -184,20 +187,45 @@
     var g = guard(fn, 'frame'), prev = 0;
     function frame(now) {
       var dt = prev ? Math.min((now - prev) / 1000, 0.1) : 1 / 60;
-      prev = now; lastTick = performance.now();
+      prev = now; lastTick = performance.now(); beating = true;
       if (!paused) g(dt, now);
       w.requestAnimationFrame(frame);
     }
     lastTick = performance.now();
     w.requestAnimationFrame(frame);
   }
+  /* Watchdog: a slow main loop is NOT fatal. Only a loop that reports heartbeats (Boot.beat) can stall; after 3 separate stalls longer
+     than 4 s a small notice offers "Chế độ nhẹ" (lowest quality). Hidden tabs do not count. */
+  var beating = false, inStall = false, stalls = 0, liteShown = false, liteFns = [];
+  function beat() { lastTick = performance.now(); beating = true; }
+  function liteNotice() {
+    if (liteShown || !d.body) return;
+    liteShown = true;
+    var o = d.createElement('div');
+    o.setAttribute('role', 'status');
+    o.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:2147483000;display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:min(420px,calc(100vw - 20px));' +
+      'padding:9px 12px;background:#161a21;border:1px solid #2c3340;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.4);font:13px/1.4 system-ui,sans-serif;color:#e8eaee';
+    var t = d.createElement('span'); t.textContent = texts.slowMsg; t.style.cssText = 'flex:1 1 180px';
+    function b(label, primary, fn) {
+      var x = d.createElement('button'); x.type = 'button'; x.textContent = label;
+      x.style.cssText = 'min-height:34px;padding:0 12px;border-radius:8px;font:600 13px system-ui,sans-serif;cursor:pointer;' +
+        (primary ? 'background:#e8eaee;color:#111;border:0' : 'background:transparent;color:#e8eaee;border:1px solid #3a4250');
+      x.addEventListener('click', fn); o.appendChild(x);
+    }
+    o.appendChild(t);
+    b(texts.lite, true, function () { store.set('lite', 1); liteFns.forEach(function (f) { try { f(true); } catch (e) {} }); o.remove(); });
+    b(texts.hide, false, function () { o.remove(); });
+    d.body.appendChild(o);
+  }
   setInterval(function () {
-    if (!lastTick || paused || d.hidden) return;
-    if (performance.now() - lastTick > 4000) fatal(new Error('main loop stalled > 4s'), texts.stalled);
+    if (!beating || paused || d.hidden) return;
+    var gap = performance.now() - lastTick;
+    if (gap > 4000) { if (!inStall) { inStall = true; stalls++; if (stalls >= 3) liteNotice(); } }
+    else if (gap < 1500) inStall = false;
   }, 1000);
   d.addEventListener('visibilitychange', function () {
     if (d.hidden) { paused = true; pauseFns.forEach(function (f) { try { f(); } catch (e) {} }); }
-    else { paused = false; lastTick = performance.now(); resumeFns.forEach(function (f) { try { f(); } catch (e) {} }); }
+    else { paused = false; lastTick = performance.now(); inStall = false; resumeFns.forEach(function (f) { try { f(); } catch (e) {} }); }
   });
 
   function watchCanvas(canvas) {
@@ -207,7 +235,7 @@
   w.Boot = {
     env: env, store: store, log: log, texts: texts,
     guard: guard, loop: loop, fatal: fatal, isForeign: isForeign, watchCanvas: watchCanvas, measure: measure,
-    onPause: function (f) { pauseFns.push(f); }, onResume: function (f) { resumeFns.push(f); },
+    beat: beat, onLite: function (f) { liteFns.push(f); }, onPause: function (f) { pauseFns.push(f); }, onResume: function (f) { resumeFns.push(f); },
     get paused() { return paused; }
   };
 })();

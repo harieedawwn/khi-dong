@@ -133,7 +133,9 @@ export function init(ctx) {
     const U = UV[0], invU = 1 / U, S = sampler;
     let nsub = Math.ceil(dt * U * 1.6 / 0.08); nsub = nsub < 1 ? 1 : nsub > 3 ? 3 : nsub;
     const h = dt / nsub, maxAge = 2.2 * (X1 - X0) / U;
-    for (let i = 0; i < N; i++) {
+    const Na = Math.max(64, (N * (ctx.quality ? ctx.quality.scale : 1)) | 0);   // quality governor: fewer particles on slow machines
+    points.geometry.setDrawRange(0, Na);
+    for (let i = 0; i < Na; i++) {
       const j = i * 3;
       let x = pos[j], y = pos[j + 1], z = pos[j + 2];
       for (let s = 0; s < nsub; s++) {       // midpoint step

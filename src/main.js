@@ -8,6 +8,7 @@ import * as aerodataM from './physics/aerodata.js';
 import * as flowM from './flow/flowfield.js';
 import * as surfaceM from './flow/surface.js';
 import { createGpuBackend } from './flow/lbm-gpu.js';
+import { createQuality } from './quality.js';
 import * as assembleM from './geom/assemble.js';
 import * as catalogM from './geom/catalog.js';
 import * as libraryM from './geom/library.js';
@@ -53,6 +54,9 @@ async function boot() {
   const flow = flowM.createFlow();
   // mid-plane solver on the scene's WebGL2 context (falls back to the CPU backend when float targets are missing)
   if (flow.plane) { flow.plane.attachGpu(() => createGpuBackend(scene.renderer), state.get().tier); state.on('change:tier', () => flow.plane.setTier(state.get().tier)); }
+  // adaptive quality governor (frame time -> DPR, antialias, shadows, environment, glass, solver level, particle / smoke counts); it owns the solver level
+  if (flow.plane) flow.plane.setGovernor(false);
+  const quality = createQuality({ scene, flow, state, tier: state.get().tier });
   let sfxH = null;
   const sfx = { play: (...a) => (sfxH && sfxH.play ? sfxH.play(...a) : undefined), setWind: (u) => (sfxH && sfxH.setWind ? sfxH.setWind(u) : undefined) };
 
@@ -104,7 +108,7 @@ async function boot() {
 
   const ctx = {
     state, scene, flow, aero: aeroM, atmo: atmoM, aerodata: aerodataM, library: libraryM, catalog: catalogM,
-    assemble: assembleFn, sfx, uvis: 0,
+    assemble: assembleFn, sfx, uvis: 0, quality,
     getModel: () => (active ? active.model : null),
     evaluateSnapshot(snapshot, U, air) {
       const e = entryFor(snapshot);
@@ -148,7 +152,8 @@ async function boot() {
   let clock = 0, lastSurf = -1, pending = false, urgent = false;
   let lastSA = NaN, lastSM = NaN, lastFlow = '', lastBl = '', lastWake = '', lastHeat = '', lastWindU = NaN, lastSound = null;
 
-  function tick(dt) {
+  function tick(dt, raw) {
+    if (raw !== undefined) { quality.update(raw); if (window.Boot && window.Boot.beat) window.Boot.beat(); }
     if (!active) return;
     clock += dt;
     const s = state.get(), env = s.env;
@@ -203,7 +208,7 @@ async function boot() {
 
   scene.renderer.compile(scene.scene, scene.camera);   // warm up shaders before the first interaction
   window.__kit = { renderer: scene.renderer, tier: state.get().tier };
-  window.__app = { ctx, modelview, scene, results, loadModel, tick };
+  window.__app = { ctx, modelview, scene, results, loadModel, tick, quality };
   window.__ready = true;
 }
 

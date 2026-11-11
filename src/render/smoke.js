@@ -146,7 +146,7 @@ export function init(ctx) {
     return cpuTex;
   }
   function updateSheet(view, fade) {
-    plane.setView(view);
+    plane.setView({ lines: view.lines * (ctx.quality ? ctx.quality.scale : 1), density: view.density });
     const tex = dyeTexture();
     if (!tex) { sheet.visible = false; return; }
     const u = dMat.uniforms; u.uDye.value = tex;
@@ -377,7 +377,7 @@ export function init(ctx) {
       return;
     }
     if (sheet.visible) sheet.visible = false;
-    let want = Math.round(view.lines); want = want < 1 ? 1 : want > L ? L : want;
+    let want = Math.round(view.lines * (ctx.quality ? ctx.quality.scale : 1)); want = want < 1 ? 1 : want > L ? L : want;
     if (!mesh.visible) { mesh.visible = true; findLight(); nL = 0; }
     if (want !== nL || view.rake !== curRake) { nL = want; curRake = view.rake; layout(view); reset(); }
     if (view.smokeColor !== curColor) { curColor = view.smokeColor; setColors(view); }

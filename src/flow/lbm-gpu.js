@@ -5,6 +5,8 @@
 import * as THREE from 'three';
 import { TUN } from './plane.js';
 
+const FORCED_PERIOD_MS = 90;     // software GL: one velocity read-back per period
+const MAX_AGE_MS = 50;           // an unsignalled read-back buffer older than this is read blocking (software GL never signals fences in time)  // an unsignalled read-back buffer older than this is read blocking (software GL never signals fences in time)
 const VS = `in vec3 position; void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const HEAD = `precision highp float; precision highp sampler2D;\n`;
 
@@ -207,7 +209,7 @@ export function createGpuBackend(renderer) {
 
   let nx = 0, ny = 0, dnx = 0, dny = 0, pa = null, pb_ = null, sRT = null, farRT = null, d0 = null, d1 = null, dF = null, packRT = null;
   let nozTex = null, sdfTex = null, f0Tex = null, f1Tex = null, bake = null;
-  let pbos = [], issued = [], slot = 0, bytes = null, lastWin = null, clearDyePending = true;
+  let pbos = [], ring = [], packed = false, fenceWorks = true, lastIssue = 0, bytes = null, lastWin = null, clearDyePending = true;
   const rt = (w, h, count, linear) => {
     const t = new THREE.WebGLRenderTarget(w, h, { count: count || 1, type: HF, format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false, generateMipmaps: false,
       minFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, magFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, wrapS: THREE.ClampToEdgeWrapping, wrapT: THREE.ClampToEdgeWrapping });
@@ -219,7 +221,7 @@ export function createGpuBackend(renderer) {
     renderer.setRenderTarget(target); renderer.render(scene, cam);
     renderer.setRenderTarget(prev); renderer.autoClear = ac;
   }
-  function disposeRT() { for (const t of [pa, pb_, sRT, farRT, d0, d1, dF, packRT]) if (t) t.dispose(); if (nozTex) nozTex.dispose(); for (const b of pbos) gl.deleteBuffer(b); pbos = []; issued = []; slot = 0; }
+  function disposeRT() { for (const t of [pa, pb_, sRT, farRT, d0, d1, dF, packRT]) if (t) t.dispose(); if (nozTex) nozTex.dispose(); for (const r of ring) { if (r.sync) gl.deleteSync(r.sync); gl.deleteBuffer(r.buf); } pbos = []; ring = []; }
   function half(arr, n, ch, pick) {
     const out = new Uint16Array(n * 4);
     for (let i = 0; i < n; i++) for (let c = 0; c < 4; c++) { const k = pick[c]; out[4 * i + c] = THREE.DataUtils.toHalfFloat(k < 0 ? 0 : Math.max(-60000, Math.min(60000, arr[i * ch + k]))); }
@@ -254,7 +256,7 @@ export function createGpuBackend(renderer) {
       nozTex = new THREE.DataTexture(new Float32Array(dny * 4), dny, 1, THREE.RGBAFormat, THREE.FloatType);
       nozTex.minFilter = nozTex.magFilter = THREE.NearestFilter; nozTex.needsUpdate = true;
       bytes = new Uint8Array(nx * ny * 4);
-      for (let i = 0; i < 2; i++) { const b = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b); gl.bufferData(gl.PIXEL_PACK_BUFFER, nx * ny * 4, gl.STREAM_READ); pbos.push(b); issued.push(false); }
+      for (let i = 0; i < 3; i++) { const b = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b); gl.bufferData(gl.PIXEL_PACK_BUFFER, nx * ny * 4, gl.STREAM_READ); ring.push({ buf: b, sync: null, age: 0, t0: 0, busy: false }); }
       gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
       clearDyePending = true;
     },
@@ -304,26 +306,53 @@ export function createGpuBackend(renderer) {
     },
     setNozzles(profile) { nozTex.image.data.set(profile); nozTex.needsUpdate = true; },
     clearDye() { clearDyePending = true; },
-    // read-back through a ring of two pixel pack buffers, no fences (Chrome only reports a fence as signalled after
-    // a later task, so polling it starved the CPU copy in slow / software WebGL): the buffer written two calls ago is
-    // read now (the GPU has long finished it; if not, the read waits, which also paces a backed-up software GPU).
+    // CPU copy of the velocity, in two halves so that the main thread never waits for more than the previous frame:
+    //   fetchVelocity(dst): at the START of a frame, before any new GPU work is queued. Reads the oldest pending buffer if its fence has
+    //     signalled; if the fence has not signalled within MAX_AGE_MS (software GL / Chrome only reports fences after later tasks) it reads
+    //     blocking: that wait is at most the previous frame, and it also keeps the CPU from running frames ahead of the GPU.
+    //   queueVelocity(ulb): at the END of the frame; packs the velocity, copies it into a pixel pack buffer, fences it.
     // Returns true when dst holds a new field.
-    readVelocity(dst, ulb) {
-      let fresh = false;
-      const b = pbos[slot];
-      if (issued[slot]) {
-        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, bytes); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    fetchVelocity(dst) {
+      if (!fenceWorks) {           // no usable fences: direct read of the pack target queued at the end of the previous frame
+        if (!packed) return false;
+        packed = false; renderer.readRenderTargetPixels(packRT, 0, 0, nx, ny, bytes);
         const n = nx * ny;
         for (let i = 0; i < n; i++) { const o = 4 * i; dst[2 * i] = ((bytes[o] * 256 + bytes[o + 1]) / 65535 - 0.5) * 4; dst[2 * i + 1] = ((bytes[o + 2] * 256 + bytes[o + 3]) / 65535 - 0.5) * 4; }
-        fresh = true;
+        return true;
       }
+      let old = null; const tn = performance.now();
+      for (const r of ring) { if (r.busy) { r.age = tn - r.t0; if (!old || r.age > old.age) old = r; } }
+      if (!old) return false;
+      let ok = old.age > MAX_AGE_MS;
+      if (!ok) { ok = gl.getSyncParameter(old.sync, gl.SYNC_STATUS) === gl.SIGNALED; if (ok) fenceWorks = true; }
+      else { fenceWorks = false; for (const r of ring) { if (r.sync) gl.deleteSync(r.sync); r.sync = null; r.busy = false; } return false; }     // fences are not usable here: switch to direct reads
+      if (!ok) return false;
+      gl.deleteSync(old.sync); old.sync = null; old.busy = false;
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, old.buf); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, bytes); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      const n = nx * ny;
+      for (let i = 0; i < n; i++) { const o = 4 * i; dst[2 * i] = ((bytes[o] * 256 + bytes[o + 1]) / 65535 - 0.5) * 4; dst[2 * i + 1] = ((bytes[o + 2] * 256 + bytes[o + 3]) / 65535 - 0.5) * 4; }
+      return true;
+    },
+    queueVelocity(ulb) {
+      const tn = performance.now();
+      if (!fenceWorks) {
+        if (tn - lastIssue < FORCED_PERIOD_MS || packed) return;          // without usable fences: one blocking read per period, not per frame
+        lastIssue = tn; packed = true;
+        mPack.uniforms.tC.value = pa.textures[2]; mPack.uniforms.uIu.value = 1 / ulb;
+        const prev = renderer.getRenderTarget(), ac = renderer.autoClear;
+        renderer.autoClear = false; mesh.material = mPack; renderer.setRenderTarget(packRT); renderer.render(scene, cam);
+        renderer.setRenderTarget(prev); renderer.autoClear = ac;
+        return;
+      }
+      let free = null; for (const r of ring) if (!r.busy) { free = r; break; }
+      if (!free) return;
+      lastIssue = tn;
       mPack.uniforms.tC.value = pa.textures[2]; mPack.uniforms.uIu.value = 1 / ulb;
       const prev = renderer.getRenderTarget(), ac = renderer.autoClear;
       renderer.autoClear = false; mesh.material = mPack; renderer.setRenderTarget(packRT); renderer.render(scene, cam);
-      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b); gl.readPixels(0, 0, nx, ny, gl.RGBA, gl.UNSIGNED_BYTE, 0); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-      issued[slot] = true; slot = (slot + 1) % pbos.length;
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, free.buf); gl.readPixels(0, 0, nx, ny, gl.RGBA, gl.UNSIGNED_BYTE, 0); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      free.sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); free.busy = true; free.age = 0; free.t0 = tn; gl.flush();
       renderer.setRenderTarget(prev); renderer.autoClear = ac;
-      return fresh;
     },
     dyeTexture() { return d0 ? d0.texture : null; },
     dyeData() { return null; },

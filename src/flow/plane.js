@@ -16,7 +16,8 @@ export const TIERS = {
   cpu: { nx: 128, ny: 48, dnx: 256, dny: 72, rate: 300, ulb: 0.16, cells: 12 },
 };
 // governor levels: grid scale and step-rate scale relative to the tier
-const LEVELS = [{ g: 1, r: 1 }, { g: 1, r: 0.6 }, { g: 0.75, r: 0.6 }, { g: 0.5, r: 0.6 }];
+const LEVELS = [{ g: 1, r: 1 }, { g: 1, r: 0.6 }, { g: 0.75, r: 0.6 }, { g: 0.5, r: 0.6 }, { g: 0.35, r: 0.5 }];
+export const MAX_LEVEL = LEVELS.length - 1;
 const HEX = { white: [0.93, 0.92, 0.9], red: [0.82, 0.23, 0.18], blue: [0.18, 0.44, 0.82], orange: [0.91, 0.53, 0.16] };
 const MULTI = [[0.78, 0.35, 0.29], [0.3, 0.5, 0.75], [0.85, 0.61, 0.29], [0.36, 0.64, 0.5], [0.56, 0.45, 0.72], [0.8, 0.73, 0.35]];
 export const TUNE = {
@@ -25,6 +26,8 @@ export const TUNE = {
   cs: 0.22, tauMin: 0.512, kick: 0.02,
 };
 const DEG = Math.PI / 180;
+const K_TAU = 0.9;                    // s: time constant of the visual time scale k
+const DT_MAX = 0.1;                   // s: longest frame the solver follows in one update (slower frames run in slow motion)
 const sm = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
 /* ---------------------------------------------------------------------------------------- */
@@ -218,7 +221,7 @@ export function createPlane(opts) {
   let pb = null, win = { x0: -1, y0: -0.3, h: 0.0125 }, nx = 0, ny = 0, dnx = 0, dny = 0;
   let vel = null, velFresh = false, ready = false, lbmOn = false;
   let band = 10, staticKey = '', nozKey = '', needInit = true, warm = 0;
-  let stepAcc = 0, kVis = 1, simTime = 0, frames = 0;
+  let stepAcc = 0, kVis = 1, kInit = false, simTime = 0, frames = 0;
   // governor state
   let emaDt = 1 / 60, slowT = 0, fastT = 0, lockT = 0, lastUp = -1e9, cpuMs = 0;
   const S = { win, ca: 1, sa: 0, gnd: 0, invb: 1, M: 0, pad: 0, ulb: 0.15, dipK: 1, gridK: 1, shock: null };
@@ -304,7 +307,7 @@ export function createPlane(opts) {
     emaDt += (dt - emaDt) * Math.min(1, dt / 0.5);
     lockT -= dt;
     const budgetMs = backend.kind === 'cpu' ? 7 : 1e9;
-    if (emaDt > 0.25 && level < 3) { setLevel(3); return; }
+    if (emaDt > 0.25 && level < 3) { setLevel(3); return; }   // (own governor; the app's quality governor switches this off and drives setLevel)
     if (emaDt > 1 / 22 || cpuMs > budgetMs) { slowT += dt; fastT = 0; } else if (emaDt < 1 / 50) { fastT += dt; slowT = 0; } else { slowT = 0; fastT = 0; }
     if (slowT > 1.0 && level < 3) { if (simTime - lastUp < 12) lockT = 45; setLevel(level + 1); }
     else if (fastT > 5 && level > 0 && lockT <= 0) { lastUp = simTime; setLevel(level - 1); }
@@ -316,6 +319,8 @@ export function createPlane(opts) {
   function update(p, UvisIn, dt) {
     if (!backend) pickBackend();
     frames++;
+    // CPU copy of the previous frame's velocity first, while the GPU queue is still short (see lbm-gpu.js)
+    if (lbmOn && backend.fetchVelocity && backend.fetchVelocity(vel, tier.ulb)) velFresh = true;
     if (dt > 0 && govOn) govern(dt);
     const t0 = now();
     const a = Math.abs(p.alphaDeg);
@@ -348,15 +353,16 @@ export function createPlane(opts) {
     const Unom = UvisIn;
     const rateNeed = Unom / (win.h * tier.ulb), rateMax = tier.rate * lv.r;
     const k = lbmOn ? Math.min(1, rateMax / rateNeed) : 1;
-    kVis += (k - kVis) * Math.min(1, (dt || 0) * 4 + (needInit ? 1 : 0));
+    // visual speed changes smoothly (time constant K_TAU), also when a governor step changes the grid: only the very first value snaps
+    if (!kInit) { kVis = k; kInit = true; } else kVis += (k - kVis) * (1 - Math.exp(-(dt > 0.25 ? 0.25 : dt || 0) / K_TAU));
     const Ueff = Unom * kVis;
-    let sdt = dt > 0.05 ? 0.05 : dt > 0 ? dt : 0;
+    let sdt = dt > DT_MAX ? DT_MAX : dt > 0 ? dt : 0;
     if (lbmOn && needInit) { backend.init(TUNE.kick * tier.ulb); needInit = false; stepAcc = 0; velFresh = false; }
     let n = 0;
     if (lbmOn && sdt > 0) {
       stepAcc += sdt * Ueff / (win.h * tier.ulb) * (warm > 0 ? 2 : 1);
       n = Math.floor(stepAcc); stepAcc -= n;
-      const cap = Math.max(2, Math.ceil(rateMax * 0.05 * (warm > 0 ? 2 : 1)));
+      const cap = Math.max(2, Math.ceil(rateMax * DT_MAX * (warm > 0 ? 2 : 1)));
       if (n > cap) { n = cap; stepAcc = 0; }
       if (n > 0) backend.step(n, P);
       warm -= sdt;
@@ -367,7 +373,7 @@ export function createPlane(opts) {
       if (disp > 0) backend.advectDye(disp, Math.min(3, Math.max(1, Math.ceil(disp / 2.5))), lbmOn, tier.ulb);
       simTime += sdt;
     }
-    if (lbmOn && backend.readVelocity(vel, tier.ulb)) velFresh = true;
+    if (lbmOn) { if (backend.queueVelocity) backend.queueVelocity(tier.ulb); else if (backend.readVelocity(vel, tier.ulb)) velFresh = true; }
     cpuMs += (now() - t0 - cpuMs) * 0.1;
     stat.stepsPerFrame = n; stat.stepsPerSec = lbmOn ? Ueff / (win.h * tier.ulb) : 0; stat.visScale = kVis; stat.nx = nx; stat.ny = ny; stat.dnx = dnx; stat.dny = dny;
     stat.cpuMs = cpuMs; stat.gpuMs = backend.gpuMs(); stat.emaDt = emaDt; stat.lbmOn = lbmOn; stat.level = level;
@@ -398,6 +404,8 @@ export function createPlane(opts) {
     resetDye() { if (backend) backend.clearDye(); },
     reinit() { needInit = true; },
     setGovernor(on) { govOn = !!on; },   // debugging / screenshots: pin the level
+    setLevel: (l) => { l = Math.max(0, Math.min(MAX_LEVEL, l | 0)); if (l !== level) setLevel(l); },
+    level: () => level,
     _setLevel: setLevel,
   };
 }
