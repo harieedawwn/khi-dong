@@ -171,7 +171,7 @@ layout(location=0) out vec4 o;
 void main(){
   vec2 fc = gl_FragCoord.xy; ivec2 p = ivec2(fc);
   if (texelFetch(tFar, p, 0).z > 0.5 || fc.x > uDN.x - 2.0) { o = vec4(0.0); return; }
-  if (fc.x < uNozCol + 2.0) { o = fc.x > uNozCol - 1.0 ? texelFetch(tNoz, ivec2(p.y, 0), 0) : vec4(0.0); return; }
+  if (fc.x < uNozCol + 2.0 + uD.x) {   // the nozzle band covers one displacement, so fast flow leaves no gaps o = fc.x > uNozCol - 1.0 ? texelFetch(tNoz, ivec2(p.y, 0), 0) : vec4(0.0); return; }
   vec2 v = velAt(fc), b = fc - v;
   vec4 c = texelFetch(tDye, p, 0), fw = texelFetch(tFw, p, 0), bk = texture(tFw, (fc + v) / uDN);
   ivec2 q = ivec2(floor(b - 0.5)), mx = ivec2(uDN) - 1;

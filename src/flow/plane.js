@@ -122,10 +122,10 @@ export function sdfAt(pb, mx, my) {                      // model frame, bilinea
 /* ------------------------------------------- CPU backend ------------------------------------------- */
 function createCpuBackend() {
   let L = null, D = null, pb = null, far = null, win = null, vel = null;
-  let nozzle = null, nozCol = 0;
+  let nozzle = null, nozCol = 0, nozW = 1;
   const o2 = new Float64Array(2);
   const inject = (i, j, c, o) => {
-    if (i <= nozCol + 1) {
+    if (i <= nozCol + nozW) {
       const p = j * 4, on = i >= nozCol - 1 ? 1 : 0;
       c[o] = nozzle[p] * on; c[o + 1] = nozzle[p + 1] * on; c[o + 2] = nozzle[p + 2] * on; c[o + 3] = nozzle[p + 3] * on;
     } else if (i >= D.nx - 2) { c[o] = c[o + 1] = c[o + 2] = c[o + 3] = 0; }
@@ -183,6 +183,7 @@ function createCpuBackend() {
         }
         D.vx[q] = vx * k; D.vy[q] = vy * k;
       }
+      nozW = 1 + Math.ceil(k);
       for (let s = 0; s < nsub; s++) D.step(inject);
     },
     setNozzles(profile) { nozzle.set(profile); },
