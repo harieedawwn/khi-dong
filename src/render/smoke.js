@@ -20,15 +20,40 @@ const MIN_PX = 1.8;             // minimum ribbon width in device pixels (anti-a
 const WARM_S = 1.4, WARM_K = 3; // after a reset, run time-lapse x3 for 1.4 s so the picture fills fast
 
 const DVERT = /* glsl */`
+attribute float aOff;
+uniform float uThick, uFlip;
 varying vec2 vUv;
-void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+varying float vOff, vX, vDepth;
+void main(){
+  vUv = uv; vOff = abs(aOff); vX = position.x;
+  float k = 0.3 + 0.7 * smoothstep(-2.4, 2.2, position.x);   // thin at the nozzle, thicker in the wake
+  vec3 p = position; p.z += uFlip * aOff * uThick * k;
+  vDepth = -(modelViewMatrix * vec4(p, 1.0)).z;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}`;
 const DFRAG = /* glsl */`
 uniform sampler2D uDye;
 uniform vec2 uSize;
 uniform vec3 uTint;
-uniform float uMulti, uOpacity, uGain;
+uniform float uMulti, uOpacity, uGain, uSide;
+uniform vec2 uCol;
 varying vec2 vUv;
+varying float vOff, vX, vDepth;
 void main(){
+  if (vOff >= 0.001) {   // side layers: soft bilinear halo, fading with offset, safe column around the model
+    vec4 e = texture2D(uDye, vUv);
+    float b = 0.85 * smoothstep(0.02, 0.9, clamp(e.a * uGain, 0.0, 1.0));
+    b *= uSide * exp(-2.2 * vOff * vOff);
+    b *= smoothstep(0.25, 0.9, vDepth);
+    float inside = smoothstep(uCol.x - 0.10, uCol.x, vX) * (1.0 - smoothstep(uCol.y, uCol.y + 0.10, vX));
+    b *= 1.0 - inside;
+    b *= smoothstep(0.0, 0.02, vUv.x - 0.015) * (1.0 - smoothstep(0.93, 0.995, vUv.x));
+    if (b < 0.004) discard;
+    vec3 c2 = mix(uTint, e.rgb / max(e.a, 1e-4), uMulti);
+    gl_FragColor = vec4(c2 * 0.94, b * uOpacity);
+    #include <colorspace_fragment>
+    return;
+  }
   // smooth (quintic) reconstruction: crisp filaments without bilinear diamonds, no blur and no glow
   vec2 p = vUv * uSize - 0.5, i = floor(p), f = p - i;
   f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
@@ -126,10 +151,22 @@ export function init(ctx) {
   const plane = flow.plane || null;
   const dMat = new THREE.ShaderMaterial({
     vertexShader: DVERT, fragmentShader: DFRAG, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
-    uniforms: { uDye: { value: null }, uSize: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 } },
+    uniforms: { uDye: { value: null }, uSize: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 }, uThick: { value: 0.05 }, uFlip: { value: 1 }, uCol: { value: new THREE.Vector2(0, 0) }, uSide: { value: 0.3 } },
   });
-  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(TUN.x1 - TUN.x0, TUN.y1 - TUN.y0), dMat);
-  sheet.position.set(0.5 * (TUN.x0 + TUN.x1), 0.5 * (TUN.y0 + TUN.y1), 0);
+  const OFFS = { low: [-1, 0, 1], high: [-1, -0.5, 0, 0.5, 1] };
+  const THICK = { low: 0.05, high: 0.07 };
+  const base = new THREE.PlaneGeometry(TUN.x1 - TUN.x0, TUN.y1 - TUN.y0, 24, 1).translate(0.5 * (TUN.x0 + TUN.x1), 0.5 * (TUN.y0 + TUN.y1), 0);
+  const sheet = new THREE.Mesh(new THREE.BufferGeometry(), dMat);
+  let sheetTier = '';
+  function buildSheet(t) {
+    const offs = OFFS[t], g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', base.getAttribute('position')); g.setAttribute('uv', base.getAttribute('uv')); g.setIndex(base.getIndex());
+    g.setAttribute('aOff', new THREE.InstancedBufferAttribute(new Float32Array(offs), 1));
+    g.instanceCount = offs.length;
+    const old = sheet.geometry; sheet.geometry = g; if (old) old.dispose();
+    dMat.uniforms.uThick.value = THICK[t]; sheetTier = t;
+  }
+  buildSheet('low');
   sheet.frustumCulled = false; sheet.visible = false; sheet.renderOrder = 5;
   (sc.root || sc.scene).add(sheet);
   let cpuTex = null, cpuBytes = null;
@@ -151,7 +188,11 @@ export function init(ctx) {
     plane.setView({ lines: view.lines * (ctx.quality ? ctx.quality.scale : 1), density: view.density });
     const tex = dyeTexture();
     if (!tex) { sheet.visible = false; return; }
+    const tn = state.get().tier === 'high' ? 'high' : 'low'; if (tn !== sheetTier) buildSheet(tn);
     const u = dMat.uniforms; u.uDye.value = tex;
+    sc.camera.getWorldPosition(camPos); u.uFlip.value = camPos.z >= 0 ? 1 : -1;
+    const bx = ctx.modelview && ctx.modelview.box;
+    if (bx) u.uCol.value.set(bx.x0 - 0.12, bx.x1 + 0.12); else u.uCol.value.set(0, 0);
     col.set(HEX[view.smokeColor] || HEX.white); u.uTint.value.set(col.r, col.g, col.b);
     u.uMulti.value = view.smokeColor === 'multi' ? 1 : 0;
     u.uOpacity.value = fade * (0.5 + 0.5 * view.density); u.uGain.value = 1.15 + 0.5 * view.density;

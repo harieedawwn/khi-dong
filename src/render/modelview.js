@@ -132,19 +132,18 @@ export function init(ctx) {
 
   /* -------------------------------------------------------- view bookkeeping */
   let cur = null; const leaving = [];
-  let heatMode = 'off', lastFields = null, ext = { xmax: 0.2, ymax: 0.15, ymin: -0.15 }, extAlpha = 1e9;
+  let heatMode = 'off', lastFields = null, ext = { xmin: -0.2, xmax: 0.2, ymax: 0.15, ymin: -0.15 }, extAlpha = 1e9;
 
   function computeExtents(alphaDeg) {
     if (!cur) return;
     const a = -alphaDeg * DEG, cs = Math.cos(a), sn = Math.sin(a), b = cur.bb;
-    let xm = -1e9, ym = -1e9, yn = 1e9;
+    let xn = 1e9, xm = -1e9, ym = -1e9, yn = 1e9;
     for (let i = 0; i < 4; i++) {
       const x = (i & 1) ? b.x1 : b.x0, y = (i & 2) ? b.y1 : b.y0;
       const wx = x * cs - y * sn, wy = x * sn + y * cs;
-      if (wx > xm) xm = wx; if (wy > ym) ym = wy; if (wy < yn) yn = wy;
+      if (wx < xn) xn = wx; if (wx > xm) xm = wx; if (wy > ym) ym = wy; if (wy < yn) yn = wy;
     }
-    ext.xmax = xm; ext.ymax = ym; ext.ymin = yn; extAlpha = alphaDeg;
-    scene.setStrutTop(yn + 0.03);
+    ext.xmin = xn; ext.xmax = xm; ext.ymax = ym; ext.ymin = yn; extAlpha = alphaDeg;
   }
 
   function setModel(model) {
@@ -296,5 +295,5 @@ export function init(ctx) {
     }
   }
 
-  return { setModel, applyHeatmap, setForces, update, get view() { return cur; }, get fields() { return lastFields; } };
+  return { setModel, applyHeatmap, setForces, update, get view() { return cur; }, get box() { return { x0: ext.xmin, x1: ext.xmax }; }, get fields() { return lastFields; } };
 }

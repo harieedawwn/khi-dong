@@ -198,9 +198,6 @@ export function createScene(opts = {}) {
   }
   box(0.04, 0.2, 0.3, 0.47, BALANCE_TOP - 0.25, 0, 0x555D66, 0.008);
   cyl(0.012, 0.012, 0.7, 8, 0.6, BALANCE_TOP - 0.55, 0.2, 0x1B1D21);   // cable
-  // strut mounting flange on the floor
-  cyl(0.075, 0.075, 0.012, 24, 0, FLOOR_Y + 0.004, 0, 0x555D66);
-  cyl(0.06, 0.06, 0.012, 24, 0, FLOOR_Y + 0.014, 0, 0x7E868F);
 
   // smoke rake at x -2.6: vertical nozzle comb + horizontal feeder tube through the wall
   const RX = -2.6;
@@ -358,18 +355,6 @@ export function createScene(opts = {}) {
   const hallFloor = new THREE.Mesh(new THREE.PlaneGeometry(500, 500).rotateX(-Math.PI / 2).translate(0, HALL_Y, 0),
     new THREE.MeshStandardMaterial({ color: 0x1C1F24, metalness: 0, roughness: 0.95 }));
   scene.add(hallFloor);
-
-  /* -------------------------------------------------------------- strut */
-  const strutGeo = new THREE.CylinderGeometry(1, 1, 1, 12).translate(0, 0.5, 0);   // unit, scaled below
-  const strut = new THREE.Mesh(strutGeo, new THREE.MeshStandardMaterial({ color: 0xB6BCC3, metalness: 0.8, roughness: 0.33 }));
-  strut.castShadow = true;
-  scene.add(strut);
-  let strutTop = 0, strutTarget = 0;
-  function applyStrut() {
-    const h = Math.max(0.05, strutTop - BALANCE_TOP);
-    strut.scale.set(0.024, h, 0.008); strut.position.set(0, BALANCE_TOP, 0);
-  }
-  applyStrut();
 
   /* -------------------------------------------------------------- camera */
   const controls = new OrbitControls(camera, canvas);
@@ -558,7 +543,6 @@ export function createScene(opts = {}) {
       try { frameCbs[i](dt, raw); } catch (e) { reportFrameError('frame#' + i, e); }
     }
     try {
-      if (strutTarget !== strutTop) { strutTop = strutTarget; applyStrut(); }
       fan.rotation.x += Math.min(fanVis * 3, 12) * dt;
       stepCamera(dt);
       if (aaRT) {
@@ -643,7 +627,6 @@ export function createScene(opts = {}) {
     three: THREE, renderer, scene, camera, root, controls, canvas,
     setCamera, thumbnail, thumbnailNow: renderThumb, raycastMidplane, onFrame, setTier, refocus, setQuality, quality: () => Object.assign({}, Q),
     setWind(uvis) { fanVis = uvis; },
-    setStrutTop(y) { strutTarget = y; },
     setFocusRadius(r) { const n = Math.max(0.1, r), ch = Math.abs(n - focusR) > 1e-4; focusR = n; if (ch && !userMoved && ready0) { preset(currentPreset, P); startAnim(P); } },
     setSafeArea(a) { const n = { l: a.insetL || 0, r: a.insetR || 0, t: a.insetT || 0, b: a.insetB || 0 }; if (n.l === safe.l && n.r === safe.r && n.t === safe.t && n.b === safe.b) return; safe = n; applyOffset(); if (!userMoved) { preset(currentPreset, P); startAnim(P); } },
     setTunnel(on) { tunnelOn = on !== false; for (const m of tunnelHide) m.visible = tunnelOn; for (const g of glassMeshes) g.visible = tunnelOn && Q.glass; },
