@@ -43,7 +43,7 @@ void main(){
   if (vOff >= 0.001) {   // side layers: soft bilinear halo, fading with offset, safe column around the model
     vec4 e = texture2D(uDye, vUv);
     float b = 0.85 * smoothstep(0.02, 0.9, clamp(e.a * uGain, 0.0, 1.0));
-    b *= uSide * exp(-2.2 * vOff * vOff);
+    b *= uSide * exp(-1.0 * vOff * vOff);
     b *= smoothstep(0.25, 0.9, vDepth);
     float inside = smoothstep(uCol.x - 0.10, uCol.x, vX) * (1.0 - smoothstep(uCol.y, uCol.y + 0.10, vX));
     b *= 1.0 - inside;
@@ -151,10 +151,10 @@ export function init(ctx) {
   const plane = flow.plane || null;
   const dMat = new THREE.ShaderMaterial({
     vertexShader: DVERT, fragmentShader: DFRAG, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
-    uniforms: { uDye: { value: null }, uSize: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 }, uThick: { value: 0.05 }, uFlip: { value: 1 }, uCol: { value: new THREE.Vector2(0, 0) }, uSide: { value: 0.3 } },
+    uniforms: { uDye: { value: null }, uSize: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 }, uThick: { value: 0.05 }, uFlip: { value: 1 }, uCol: { value: new THREE.Vector2(0, 0) }, uSide: { value: 0.5 } },
   });
   const OFFS = { low: [-1, 0, 1], high: [-1, -0.5, 0, 0.5, 1] };
-  const THICK = { low: 0.05, high: 0.07 };
+  const THICK = { low: 0.2, high: 0.3 };
   const base = new THREE.PlaneGeometry(TUN.x1 - TUN.x0, TUN.y1 - TUN.y0, 24, 1).translate(0.5 * (TUN.x0 + TUN.x1), 0.5 * (TUN.y0 + TUN.y1), 0);
   const sheet = new THREE.Mesh(new THREE.BufferGeometry(), dMat);
   let sheetTier = '';
