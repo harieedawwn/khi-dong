@@ -40,3 +40,4 @@ Tất cả mục trên đã đạt; xem ACCEPTANCE.md. Việc sau: thử điện
 - [x] Công cụ mới: tools/lookb.mjs (ảnh nhiều hướng cho mẫu / cấu hình builder), meshcheck --builder, qa.mjs --builder <mẫu>
 - Ghi chú: geom.test cho phép cạnh dài nhất của thân xe tới 4,5 % L (mép vòm bánh, như xe thư viện); còn lại 1,5 %. Builder không có ảnh thu nhỏ (chỉ biểu tượng SVG), nên không phải cập nhật.
 - render: bỏ trụ chống + mặt bích; mũi tên lực tắt mặc định (forces:false); khói rake 'plane' nhiều lớp có chiều dày (instancing 3/5 lớp, uThick/uSide, cột an toàn quanh mô hình qua modelview.box).
+- render: khói mềm hơn (5/7 lớp, nhoè dọc), chỉnh được qua ?smokeThick=&smokeSide=&smokeSoft= hoặc ctx.smoke cfg.

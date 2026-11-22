@@ -35,13 +35,14 @@ const DFRAG = /* glsl */`
 uniform sampler2D uDye;
 uniform vec2 uSize;
 uniform vec3 uTint;
-uniform float uMulti, uOpacity, uGain, uSide;
+uniform float uMulti, uOpacity, uGain, uSide, uSoft;
 uniform vec2 uCol;
 varying vec2 vUv;
 varying float vOff, vX, vDepth;
 void main(){
   if (vOff >= 0.001) {   // side layers: soft bilinear halo, fading with offset, safe column around the model
-    vec4 e = texture2D(uDye, vUv);
+    vec2 px = vec2(0.0, uSoft * 1.6 / uSize.y);   // vertical soft spread: puffy filament instead of a hairline
+    vec4 e = 0.5 * texture2D(uDye, vUv) + 0.25 * (texture2D(uDye, vUv + px) + texture2D(uDye, vUv - px));
     float b = 0.85 * smoothstep(0.02, 0.9, clamp(e.a * uGain, 0.0, 1.0));
     b *= uSide * exp(-1.0 * vOff * vOff);
     b *= smoothstep(0.25, 0.9, vDepth);
@@ -151,10 +152,13 @@ export function init(ctx) {
   const plane = flow.plane || null;
   const dMat = new THREE.ShaderMaterial({
     vertexShader: DVERT, fragmentShader: DFRAG, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
-    uniforms: { uDye: { value: null }, uSize: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 }, uThick: { value: 0.05 }, uFlip: { value: 1 }, uCol: { value: new THREE.Vector2(0, 0) }, uSide: { value: 0.5 } },
+    uniforms: { uDye: { value: null }, uSize: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 }, uThick: { value: 0.05 }, uFlip: { value: 1 }, uCol: { value: new THREE.Vector2(0, 0) }, uSide: { value: 0.3 }, uSoft: { value: 1 } },
   });
-  const OFFS = { low: [-1, 0, 1], high: [-1, -0.5, 0, 0.5, 1] };
-  const THICK = { low: 0.2, high: 0.3 };
+  const OFFS = { low: [-1, -0.5, 0, 0.5, 1], high: [-1, -0.67, -0.33, 0, 0.33, 0.67, 1] };
+  const THICK = { low: 0.14, high: 0.2 };
+  // adjustable: ?smokeThick=&smokeSide=&smokeSoft= (multipliers, default 1) or ctx.smoke.cfg at runtime
+  const cfg = { thick: 1, side: 1, soft: 1 };
+  try { const q = new URLSearchParams(location.search); for (const k of ['thick', 'side', 'soft']) { const v = parseFloat(q.get('smoke' + k[0].toUpperCase() + k.slice(1))); if (v >= 0) cfg[k] = v; } } catch (e) { /* no location */ }
   const base = new THREE.PlaneGeometry(TUN.x1 - TUN.x0, TUN.y1 - TUN.y0, 24, 1).translate(0.5 * (TUN.x0 + TUN.x1), 0.5 * (TUN.y0 + TUN.y1), 0);
   const sheet = new THREE.Mesh(new THREE.BufferGeometry(), dMat);
   let sheetTier = '';
@@ -164,7 +168,7 @@ export function init(ctx) {
     g.setAttribute('aOff', new THREE.InstancedBufferAttribute(new Float32Array(offs), 1));
     g.instanceCount = offs.length;
     const old = sheet.geometry; sheet.geometry = g; if (old) old.dispose();
-    dMat.uniforms.uThick.value = THICK[t]; sheetTier = t;
+    sheetTier = t;
   }
   buildSheet('low');
   sheet.frustumCulled = false; sheet.visible = false; sheet.renderOrder = 5;
@@ -190,6 +194,7 @@ export function init(ctx) {
     if (!tex) { sheet.visible = false; return; }
     const tn = state.get().tier === 'high' ? 'high' : 'low'; if (tn !== sheetTier) buildSheet(tn);
     const u = dMat.uniforms; u.uDye.value = tex;
+    u.uThick.value = THICK[tn] * cfg.thick; u.uSide.value = 0.3 * cfg.side; u.uSoft.value = cfg.soft;
     sc.camera.getWorldPosition(camPos); u.uFlip.value = camPos.z >= 0 ? 1 : -1;
     const bx = ctx.modelview && ctx.modelview.box;
     if (bx) u.uCol.value.set(bx.x0 - 0.12, bx.x1 + 0.12); else u.uCol.value.set(0, 0);
@@ -432,7 +437,7 @@ export function init(ctx) {
 
   alloc(state.get().tier);
   return {
-    object: mesh, update, reset: () => { if (nL) reset(); },
+    object: mesh, cfg, update, reset: () => { if (nL) reset(); },
     dispose() { mesh.parent && mesh.parent.remove(mesh); mesh.geometry.dispose(); material.dispose(); profile.dispose(); },
     // exposed for tests
     _debug: () => ({ P, cnt, head, N, L, nL }),
