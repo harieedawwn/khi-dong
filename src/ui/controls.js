@@ -193,6 +193,11 @@ export function init(ctx) {
   }
   const densVal = h('span', { class: 'p8-val p8-num' });
   const densRange = slider(0.1, 1, 0.05, v => { play('tick', 70); selfView = true; setView({ density: v }); selfView = false; setText(densVal, Math.round(v * 100) + NB + '%'); }, 'Độ đậm khói');
+  // khói 3D: độ lan theo bề ngang (0 = tấm phẳng như tia laser, 100 % ≈ bề ngang mô hình) và độ xoắn của sợi khói
+  const spreadVal = h('span', { class: 'p8-val p8-num' });
+  const spreadRange = slider(0, 2, 0.05, v => { play('tick', 70); selfView = true; setView({ smokeSpread: v }); selfView = false; setText(spreadVal, Math.round(v * 100) + NB + '%'); }, 'Độ lan khói 3D');
+  const wispVal = h('span', { class: 'p8-val p8-num' });
+  const wispRange = slider(0, 1.5, 0.05, v => { play('tick', 70); selfView = true; setView({ smokeWisp: v }); selfView = false; setText(wispVal, Math.round(v * 100) + NB + '%'); }, 'Độ xoắn khói');
   const linesVal = h('span', { class: 'p8-val p8-num' });
   const linesRange = slider(6, 24, 1, v => { play('tick', 70); selfView = true; setView({ lines: v }); selfView = false; setText(linesVal, String(v)); }, 'Số đường khói');
   const rakeSeg = seg([['plane', 'Mặt phẳng'], ['grid', 'Lưới 3D']], v => setView({ rake: v }), 'Giá phun khói');
@@ -206,6 +211,8 @@ export function init(ctx) {
       panelHead('Hiển thị', viewPanel),
       h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Màu khói'), smokeRow),
       h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Độ đậm'), densVal), densRange),
+      h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Độ lan khói 3D'), spreadVal), spreadRange),
+      h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Độ xoắn khói'), wispVal), wispRange),
       h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Số đường khói'), linesVal), linesRange),
       h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Giá phun khói'), rakeSeg.el),
       h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Bản đồ nhiệt'), heatSeg.el),
@@ -398,7 +405,9 @@ export function init(ctx) {
     for (const [id, b] of smokeBtns) { const on = id === v.smokeColor; b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.classList.toggle('is-active', on); }
     const maxLines = st.tier === 'high' ? 48 : 24;
     linesRange.max = String(maxLines);
-    if (!selfView) { densRange.value = String(v.density); linesRange.value = String(Math.min(v.lines, maxLines)); }
+    const spr = v.smokeSpread ?? 1, wsp = v.smokeWisp ?? 0.6;
+    if (!selfView) { densRange.value = String(v.density); linesRange.value = String(Math.min(v.lines, maxLines)); spreadRange.value = String(spr); wispRange.value = String(wsp); }
+    setText(spreadVal, Math.round(spr * 100) + NB + '%'); setText(wispVal, Math.round(wsp * 100) + NB + '%');
     setText(densVal, Math.round(v.density * 100) + NB + '%');
     setText(linesVal, String(Math.min(v.lines, maxLines)));
     camSeg.set(st.camera);

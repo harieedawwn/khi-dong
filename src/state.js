@@ -43,7 +43,7 @@ function defaults() {
     U: 20,
     alphaDeg: 0,
     env: { mode: 'altitude', h: 0, T: 288.15, p: 101325 },
-    view: { flow: 'smoke', smokeColor: 'white', density: 0.7, lines: 24, rake: 'plane', heatmap: 'off', forces: false, shock: true, tunnel: true, rate: 1, paused: false },
+    view: { flow: 'smoke', smokeColor: 'white', density: 0.7, smokeSpread: 1, smokeWisp: 0.6, lines: 24, rake: 'plane', heatmap: 'off', forces: false, shock: true, tunnel: true, rate: 1, paused: false },
     camera: 'overview',
     probe: { on: false, x: 0.6, y: 0.15, z: 0 },
     pins: [],

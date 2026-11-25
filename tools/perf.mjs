@@ -1,5 +1,5 @@
 // tools/perf.mjs — đo khung hình thật (không tua nhanh): fps, tác vụ > 50 ms sau khi khởi động, lỗi console.
-//   node tools/perf.mjs [--size 1000x640] [--secs 12] [--browser chromium|firefox] [--model id] [--level quality-step]
+//   node tools/perf.mjs [--eval "js"] [--size 1000x640] [--secs 12] [--browser chromium|firefox] [--model id] [--level quality-step]
 import { open, setup } from './shot.mjs';
 const A = {}; const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) { const k = argv[i].slice(2); A[k] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true; }
@@ -14,6 +14,7 @@ await page.evaluate(() => {
   const loop = (t) => { window.__frames.push(t); requestAnimationFrame(loop); }; requestAnimationFrame(loop);
 });
 if (A.noui) await page.evaluate(() => { document.getElementById('app').style.display = 'none'; window.__app.scene.setParent(document.body); });
+if (A.eval) await page.evaluate(String(A.eval));
 if (A.model) await setup(page, { model: A.model, U: A.U, alpha: A.alpha });
 await page.waitForTimeout(+(A.warm || 4000));                       // khởi động / bake xong rồi mới tính
 await page.evaluate(() => { window.__long.length = 0; window.__frames.length = 0; });
