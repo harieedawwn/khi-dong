@@ -33,7 +33,7 @@ const ASSUMPTIONS = [
 const STEPS = [
   { sel: ['#modeTabs'], tab: 'model', text: 'Chọn mẫu có sẵn hoặc tự lắp ghép mô hình.' },
   { sel: ['[data-guide="speed"]', '#dock'], tab: 'wind', text: 'Kéo thanh trượt để đổi tốc độ gió và góc tấn.' },
-  { sel: ['[data-guide="view"]', '[data-pop="viewPanel"]', '#viewPanel'], tab: 'view', text: 'Đổi kiểu hiển thị dòng khí: khói, hạt hoặc vectơ.' },
+  { sel: ['#btnSettings'], tab: 'wind', text: 'Nút ⚙ mở Cài đặt: chất lượng, khói, hiển thị, không khí, đầu dò, âm thanh.' },
   { sel: ['[data-guide="readouts"]', '#readouts'], tab: 'read', drawer: true, text: 'Xem số đo lực và bản đồ áp suất trên bề mặt.' },
   { sel: ['[data-guide="pin"]', '#charts'], tab: 'chart', drawer: true, text: 'Ghim mô hình để so sánh lực cản với mô hình khác.' }
 ];
@@ -41,8 +41,6 @@ const STEPS = [
 const TABS = [
   { id: 'model', label: 'Mô hình', icon: 'box', mounts: ['modeTabs', 'modelPanel'] },
   { id: 'wind', label: 'Gió', icon: 'wind', mounts: ['dock'] },
-  { id: 'view', label: 'Hiển thị', icon: 'eye', mounts: ['viewPanel'] },
-  { id: 'env', label: 'Môi trường', icon: 'thermometer', mounts: ['envPanel'] },
   { id: 'read', label: 'Số đo', icon: 'gauge', mounts: ['readouts'] },
   { id: 'chart', label: 'Biểu đồ', icon: 'chart', mounts: ['charts'] }
 ];
@@ -65,6 +63,7 @@ const ICONS = {
   left: '<path d="m15 18-6-6 6-6"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
   right: '<path d="m9 18 6-6-6-6"/>',
+  settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
 };
 
@@ -209,11 +208,12 @@ export function createShell(state) {
   const dock = el('div', { id: 'dock', class: 'panel', role: 'group', 'aria-label': 'Điều khiển gió' });
   const dockWrap = el('div', { class: 'dock-wrap' }, dock);
 
+  const btnSettings = el('button', { type: 'button', class: 'icon-btn', id: 'btnSettings', 'aria-label': 'Cài đặt', title: 'Cài đặt', 'aria-expanded': 'false', 'aria-haspopup': 'dialog' }, icon('settings'));
   const btnGuide = el('button', { type: 'button', class: 'icon-btn', id: 'btnGuide', 'aria-label': 'Hướng dẫn', title: 'Hướng dẫn' }, icon('help'));
   const btnAssume = el('button', { type: 'button', class: 'icon-btn', id: 'btnAssume', 'aria-label': 'Giả thiết mô hình', title: 'Giả thiết mô hình', 'data-float': 'assumptions', 'aria-expanded': 'false' }, icon('info'));
   const btnSound = el('button', { type: 'button', class: 'icon-btn', id: 'btnSound', 'aria-label': 'Âm thanh', title: 'Âm thanh', 'aria-pressed': 'true' });
   const btnFull = el('button', { type: 'button', class: 'icon-btn', id: 'btnFull', 'aria-label': 'Toàn màn hình', title: 'Toàn màn hình' }, icon('maximize'));
-  const tools = el('div', { id: 'tools', class: 'toolbar panel', role: 'toolbar', 'aria-label': 'Công cụ' }, [btnGuide, btnAssume, btnSound, btnFull]);
+  const tools = el('div', { id: 'tools', class: 'toolbar panel', role: 'toolbar', 'aria-label': 'Công cụ' }, [btnSettings, btnGuide, btnAssume, btnSound, btnFull]);
 
   const viewPanel = el('div', { id: 'viewPanel', class: 'panel popover', role: 'dialog', 'aria-label': 'Hiển thị' });
   const envPanel = el('div', { id: 'envPanel', class: 'panel popover', role: 'dialog', 'aria-label': 'Môi trường' });

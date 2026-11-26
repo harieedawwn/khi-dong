@@ -1,4 +1,4 @@
-// controls.js (P8): #dock, #viewPanel, #envPanel, scenarios menu, probe dragging.
+// controls.js (P8): #dock, bảng Cài đặt, scenarios menu, probe dragging.
 import {
   WIND_PRESETS, SCENARIOS, ALPHA_MIN, ALPHA_MAX, ALPHA_DETENT, ENV_LIMITS, RHO_LIMITS, R_AIR,
   presetU, sliderToU, uToSlider, clampU, roundU, clamp, msToKmh, linkEnv, rhoOf,
@@ -13,7 +13,13 @@ export function init(ctx) {
   ensureStyles();
   const { state, atmo, scene, sfx } = ctx;
   const $ = id => document.getElementById(id);
-  const dock = $('dock'), viewPanel = $('viewPanel'), envPanel = $('envPanel');
+  const dock = $('dock');
+  const settings = h('div', { id: 'settingsPanel', class: 'p8-settings', hidden: true, style: 'display:none' });
+  const settingsBack = h('div', { class: 'p8-set-back', hidden: true, style: 'display:none' });
+  const sheetEl = h('div', { class: 'p8-set-sheet panel', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Cài đặt' });
+  settings.append(settingsBack, sheetEl);
+  (document.getElementById('app') || document.body).appendChild(settings);
+  const viewPanel = sheetEl, envPanel = null;
 
   /* ---------- helpers ---------- */
   let lastTick = 0;
@@ -61,27 +67,72 @@ export function init(ctx) {
     return input;
   }
 
-  /* ---------- panels ---------- */
+  /* ---------- bảng Cài đặt ---------- */
+  let settingsOpen = false, lastFocus = null;
+  const onSetKey = e => { if (e.key === 'Escape') { e.stopPropagation(); setPanel(settings, false); } };
   function setPanel(el, open) {
-    if (!el) return;
-    el.hidden = !open;
-    el.style.display = open ? '' : 'none';
-    el.classList.toggle('is-open', !!open);
-    el.setAttribute('aria-hidden', open ? 'false' : 'true');
-    el.dispatchEvent(new CustomEvent('panel:toggle', { detail: { open: !!open } }));
-    syncButtons();
+    if (el !== settings) return;
+    open = !!open;
+    if (open === settingsOpen) return;
+    settingsOpen = open;
+    for (const n of [settings, settingsBack]) { n.hidden = !open; n.style.display = open ? '' : 'none'; }
+    settings.classList.toggle('is-open', open);
+    settings.setAttribute('aria-hidden', open ? 'false' : 'true');
+    const gear = document.getElementById('btnSettings');
+    if (gear) { gear.setAttribute('aria-expanded', open ? 'true' : 'false'); gear.classList.toggle('is-open', open); }
+    if (open) {
+      lastFocus = document.activeElement;
+      document.addEventListener('keydown', onSetKey, true);
+      try { sheetEl.querySelector('.icon-btn').focus({ preventScroll: true }); } catch (e) { /* ignore */ }
+      syncAll();
+    } else {
+      document.removeEventListener('keydown', onSetKey, true);
+      try { if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true }); } catch (e) { /* ignore */ }
+    }
   }
-  const isOpen = el => !!el && !el.hidden && el.style.display !== 'none';
-  function togglePanel(el, other) {
-    const open = !isOpen(el);
-    if (open && other) setPanel(other, false);
-    setPanel(el, open);
-    play('tap');
-  }
-  function panelHead(title, el) {
+  const isOpen = el => el === settings && settingsOpen;
+  settingsBack.addEventListener('pointerdown', e => { e.preventDefault(); setPanel(settings, false); });
+  function panelHead(title) {
     return h('div', { class: 'p8-ph' },
       h('h3', { class: 'p8-h', text: title }),
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Đóng', onClick: () => { setPanel(el, false); play('tap'); } }, '×'));
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Đóng cài đặt', onClick: () => { setPanel(settings, false); play('tap'); } }, '×'));
+  }
+  const gearBtn = document.getElementById('btnSettings');
+  if (gearBtn) gearBtn.addEventListener('click', () => { play('tap'); setPanel(settings, !settingsOpen); });
+
+  /* ---------- lưu lựa chọn ---------- */
+  const STORE_KEY = 'khidong.settings.v1';
+  const SAVED_VIEW = ['smokeColor', 'smokeQ', 'density', 'smokeSpread', 'smokeWisp', 'lines', 'rake', 'heatmap', 'forces', 'shock', 'tunnel'];
+  const GFX = [['auto', 'Tự động'], ['high', 'Cao'], ['mid', 'Vừa'], ['low', 'Thấp']];
+  const GFX_STEP = { high: 0, mid: 6, low: 12 };
+  let gfx = 'auto';
+  function saveSettings() {
+    try {
+      const st = state.get(), view = {};
+      for (const k of SAVED_VIEW) view[k] = st.view[k];
+      localStorage.setItem(STORE_KEY, JSON.stringify({ view, sound: st.sound !== false, gfx }));
+    } catch (e) { /* không có bộ nhớ */ }
+  }
+  function applyGfx(v) {
+    gfx = GFX_STEP[v] != null ? v : 'auto';
+    try {
+      const q = ctx.quality;
+      if (q) { if (gfx === 'auto') q.setLite && q.setLite(false); else q.pin && q.pin(GFX_STEP[gfx]); }
+    } catch (e) { /* ignore */ }
+  }
+  function loadSettings() {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) { d = null; }
+    if (!d || typeof d !== 'object') return;
+    const patch = {};
+    if (d.view && typeof d.view === 'object') {
+      const v = {};
+      for (const k of SAVED_VIEW) if (d.view[k] !== undefined && d.view[k] !== null) v[k] = d.view[k];
+      patch.view = { ...state.get().view, ...v };
+    }
+    if (typeof d.sound === 'boolean') patch.sound = d.sound;
+    if (Object.keys(patch).length) state.set(patch);
+    if (d.gfx && d.gfx !== 'auto') applyGfx(d.gfx);
   }
 
   /* ---------- DOM: dock ---------- */
@@ -133,8 +184,6 @@ export function init(ctx) {
       const p = state.get().probe; play('toggle'); state.set({ probe: { ...p, on: !p.on } });
     }
   }, 'Đầu dò');
-  const viewBtn = h('button', { type: 'button', class: 'btn', 'aria-expanded': 'false', onClick: () => togglePanel(viewPanel, envPanel) }, 'Hiển thị');
-  const envBtn = h('button', { type: 'button', class: 'btn', 'aria-expanded': 'false', onClick: () => togglePanel(envPanel, viewPanel) }, 'Không khí');
   const scBtn = h('button', { type: 'button', class: 'btn btn-primary', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onClick: () => toggleMenu() }, 'Thí nghiệm gợi ý');
 
   let pauseBtn = null;
@@ -146,8 +195,8 @@ export function init(ctx) {
 
   const extra = h('div', { class: 'p8-stack p8-extra p8-collapsed' },
     h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Dòng khí'), flowSeg.el),
-    h('div', { class: 'p8-row' }, viewBtn, envBtn, probeBtn),
-    h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Góc nhìn'), camSeg.el));
+    h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Góc nhìn'), camSeg.el),
+    h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Mức gió nhanh'), h('div', { class: 'dock-row' }, ...presetBtns)));
   const moreBtn = h('button', {
     type: 'button', class: 'btn p8-more', 'aria-expanded': 'false', onClick: () => {
       const open = extra.classList.contains('p8-collapsed');
@@ -172,7 +221,7 @@ export function init(ctx) {
         h('div', { class: 'p8-stack', style: 'gap:2px' },
           h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Góc tấn α'), aVal),
           h('div', { class: 'p8-sw' }, zeroTickL, zeroTick, aRange)),
-        h('div', { class: 'dock-row dock-full' }, ...presetBtns, h('span', { class: 'dock-play', role: 'group', 'aria-label': 'Phát dòng khí' }, pauseBtn, ...playBtns), scBtn, moreBtn)),
+        h('div', { class: 'dock-row dock-full' }, h('span', { class: 'dock-play', role: 'group', 'aria-label': 'Phát dòng khí' }, pauseBtn, ...playBtns), scBtn, moreBtn)),
       extra));
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
       dock.classList.toggle('p8-narrow', dock.clientWidth < 520);
@@ -208,22 +257,6 @@ export function init(ctx) {
   const forcesSeg = seg([[true, 'Bật'], [false, 'Tắt']], v => setView({ forces: v }), 'Mũi tên lực');
   const shockSeg = seg([[true, 'Bật'], [false, 'Tắt']], v => setView({ shock: v }), 'Sóng xung kích');
   const tunnelSeg = seg([[true, 'Hiện'], [false, 'Ẩn']], v => setView({ tunnel: v }), 'Khung và kính ống');
-  if (viewPanel) {
-    viewPanel.textContent = '';
-    viewPanel.appendChild(h('div', { class: 'p8-stack' },
-      panelHead('Hiển thị', viewPanel),
-      h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Màu khói'), smokeRow),
-      h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Độ đậm'), densVal), densRange),
-      h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Độ lan khói 3D'), spreadVal), spreadRange),
-      h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Độ xoắn khói'), wispVal), wispRange),
-      h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Số đường khói'), linesVal), linesRange),
-      h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Giá phun khói'), rakeSeg.el),
-      h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Bản đồ nhiệt'), heatSeg.el),
-      h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Mũi tên lực'), forcesSeg.el),
-      h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Sóng xung kích'), shockSeg.el),
-      h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, 'Khung thép và kính ống'), tunnelSeg.el)));
-  }
-
   /* ---------- DOM: env panel ---------- */
   const envMode = seg([['altitude', 'Độ cao giả lập'], ['custom', 'Tùy chỉnh']], v => setEnvMode(v), 'Chế độ không khí');
   const hVal = h('span', { class: 'p8-val p8-num' });
@@ -256,13 +289,22 @@ export function init(ctx) {
     h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Nhiệt độ T'), tVal), tRange),
     h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Áp suất p'), pVal), pRange),
     h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Khối lượng riêng ρ'), rVal), rRange));
-  if (envPanel) {
-    envPanel.textContent = '';
-    envPanel.appendChild(h('div', { class: 'p8-stack' },
-      panelHead('Không khí', envPanel),
-      envMode.el, altBlock, customBlock,
-      h('p', { class: 'p8-hint', text: 'p = ρ·R·T, với R = 287,05 J/(kg·K). Lực cản và lực nâng tỉ lệ với ρ.' })));
-  }
+  const gfxSeg = seg(GFX, v => { applyGfx(v); saveSettings(); syncView(); }, 'Chất lượng đồ hoạ');
+  const smokeQSeg = seg([['auto', 'Tự động'], ['flat', 'Phẳng'], ['low', 'Thấp'], ['mid', 'Vừa'], ['high', 'Cao']], v => setView({ smokeQ: v }), 'Chất lượng khói');
+  const soundSeg = seg([[true, 'Bật'], [false, 'Tắt']], v => { state.set({ sound: v }); }, 'Âm thanh');
+  const sec = (title, ...kids) => h('section', { class: 'p8-sec' }, h('h4', { class: 'p8-sech', text: title }), ...kids);
+  const fld = (label, ...kids) => h('div', { class: 'p8-stack' }, h('span', { class: 'p8-lab' }, label), ...kids);
+  const fldV = (label, val, input) => h('div', { class: 'p8-stack' }, h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, label), val), input);
+  sheetEl.appendChild(h('div', { class: 'p8-stack p8-set-body' },
+    panelHead('Cài đặt'),
+    sec('Chất lượng', fld('Đồ hoạ', gfxSeg.el), fld('Khói', smokeQSeg.el)),
+    sec('Khói', fld('Màu khói', smokeRow), fldV('Độ đậm', densVal, densRange), fldV('Số đường khói', linesVal, linesRange),
+      fldV('Độ lan khói 3D', spreadVal, spreadRange), fldV('Độ xoắn khói', wispVal, wispRange), fld('Giá phun khói', rakeSeg.el)),
+    sec('Hiển thị', fld('Mũi tên lực', forcesSeg.el), fld('Sóng xung kích', shockSeg.el), fld('Khung thép và kính ống', tunnelSeg.el), fld('Bản đồ nhiệt', heatSeg.el)),
+    sec('Không khí', envMode.el, altBlock, customBlock,
+      h('p', { class: 'p8-hint', text: 'p = ρ·R·T, với R = 287,05 J/(kg·K). Lực cản và lực nâng tỉ lệ với ρ.' })),
+    sec('Đầu dò', probeBtn, h('p', { class: 'p8-hint', text: 'Bật đầu dò rồi chạm hoặc kéo trên vùng vẽ để đo tại điểm đó.' })),
+    sec('Âm thanh', soundSeg.el)));
   function setEnvMode(mode) {
     const e = state.get().env;
     if (mode === 'custom') {
@@ -390,8 +432,6 @@ export function init(ctx) {
     const st = state.get();
     probeBtn.setAttribute('aria-pressed', st.probe.on ? 'true' : 'false');
     probeBtn.classList.toggle('is-active', !!st.probe.on);
-    viewBtn.setAttribute('aria-expanded', isOpen(viewPanel) ? 'true' : 'false');
-    envBtn.setAttribute('aria-expanded', isOpen(envPanel) ? 'true' : 'false');
     if (canvas) {
       if (st.probe.on) { if (canvas.style.touchAction !== 'none') savedTouch = canvas.style.touchAction; canvas.style.touchAction = 'none'; canvas.style.cursor = 'crosshair'; }
       else { canvas.style.touchAction = savedTouch; canvas.style.cursor = ''; }
@@ -413,7 +453,7 @@ export function init(ctx) {
     setText(spreadVal, Math.round(spr * 100) + NB + '%'); setText(wispVal, Math.round(wsp * 100) + NB + '%');
     setText(densVal, Math.round(v.density * 100) + NB + '%');
     setText(linesVal, String(Math.min(v.lines, maxLines)));
-    camSeg.set(st.camera);
+    camSeg.set(st.camera); smokeQSeg.set(v.smokeQ || 'auto'); gfxSeg.set(gfx); soundSeg.set(st.sound !== false);
     if (pauseBtn) {
       pauseBtn.setAttribute('aria-pressed', v.paused ? 'true' : 'false'); pauseBtn.textContent = v.paused ? 'Phát tiếp' : 'Tạm dừng';
       dock.querySelectorAll('[data-rate]').forEach(b => b.setAttribute('aria-pressed', String(!v.paused && Math.abs(+b.dataset.rate - (v.rate ?? 1)) < 1e-6)));
@@ -445,13 +485,15 @@ export function init(ctx) {
     state.on('change:tier', syncView),
     state.on('change:env', syncEnv),
     state.on('change:probe', syncButtons),
+    state.on('change:sound', () => { soundSeg.set(state.get().sound !== false); saveSettings(); }),
+    state.on('change:view', saveSettings),
     state.on('change:mode', () => { /* model changes do not alter controls */ })
   ];
-  setPanel(viewPanel, false); setPanel(envPanel, false);
+  loadSettings();
   syncAll();
 
   return {
     scenarios: SCENARIOS, runScenario, stopSweep, setPanel, isOpen, syncAll,
-    destroy() { stopSweep(); closeMenu(); offs.forEach(f => f && f()); }
+    destroy() { stopSweep(); setPanel(settings, false); settings.remove(); closeMenu(); offs.forEach(f => f && f()); }
   };
 }
