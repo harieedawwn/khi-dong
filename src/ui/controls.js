@@ -40,9 +40,12 @@ export function init(ctx) {
       btns.set(String(value), b);
       el.appendChild(b);
     }
+    el.style.setProperty('--n', String(options.length)); el.style.setProperty('--i', '-99');
+    const keys = options.map(o => String(o[0]));
     return {
       el,
       set(value) {
+        el.style.setProperty('--i', String(keys.indexOf(String(value)) >= 0 ? keys.indexOf(String(value)) : -99));
         for (const [k, b] of btns) {
           const on = k === String(value);
           b.setAttribute('aria-pressed', on ? 'true' : 'false');

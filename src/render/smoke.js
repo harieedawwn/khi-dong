@@ -72,10 +72,10 @@ void main(){
     float zeta = p.z / H;
     if (abs(zeta) > 2.2) {
       if (p.z * rd.z < 0.0) { t += max((abs(p.z) - 2.1 * H) / az0, 0.002); continue; }   // heading into the slab
-      if (abs(rd.z) > 0.3) break;                                                         // leaving it for good
+      if (abs(rd.z) > 0.3 && abs(p.z) > 2.2 * H) break;                                   // left it and still moving away from z = 0
       t += 0.06; continue;                                                                // grazing: H may still grow
     }
-    float ds = min(0.42 * H / az0, uStepMax);
+    float ds = max(min(0.42 * H / az0, uStepMax), (t1 - t0) / uSteps);   // always reach the far end within uSteps
     if (first > 0.5) { first = 0.0; t += ds * jit; continue; }
     t += ds;
     float env = exp(-2.0 * zeta * zeta);
@@ -89,10 +89,10 @@ void main(){
     float amp = uH.w * H * az * (0.55 + 0.9 * wk + 0.5 * near * grow);
     float dy = amp * ((n1.r - 0.5) * 1.6 + (n2.g - 0.5) * 0.9);
     vec2 uv = vec2((p.x - uTun.x) * sx, (p.y + dy - uTun.z) * sy);
-    if (uv.y < 0.0 || uv.y > 1.0) continue;
+    if (uv.y < 0.0 || uv.y > 1.0) { t += ds; continue; }
     vec4 d = dye(uv);
     float v = clamp(d.a * uGain, 0.0, 1.0);
-    if (v < 0.01) continue;
+    if (v < 0.01) { t += ds; continue; }
     float puff = mix(1.0, 0.25 + 1.5 * n2.b, uH.w * min(az, 1.0) * (0.5 + 0.5 * wk));
     float fx = smoothstep(0.0, 0.02, uv.x - 0.015) * (1.0 - smoothstep(0.93, 0.995, uv.x));
     float sig = 1.55 * v * env * puff * fx / H * clamp(pow(H / 0.03, 0.3), 1.0, 1.5);   // column over z = 1.94 v (the flat sheet), more where the smoke is thick
@@ -104,6 +104,30 @@ void main(){
   float a = 1.0 - T;
   if (a < 0.004) discard;
   gl_FragColor = vec4(acc / a * 0.95, a * uOpacity);
+  #include <colorspace_fragment>
+}`;
+
+const DVERT = /* glsl */`
+varying vec2 vUv;
+void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const DFRAG = /* glsl */`
+uniform sampler2D uDye;
+uniform vec2 uSize;
+uniform vec3 uTint;
+uniform float uMulti, uOpacity, uGain;
+varying vec2 vUv;
+void main(){
+  // smooth (quintic) reconstruction: crisp filaments without bilinear diamonds, no blur and no glow
+  vec2 p = vUv * uSize - 0.5, i = floor(p), f = p - i;
+  f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  vec4 d = texture2D(uDye, (i + 0.5 + f) / uSize);
+  // thin soft filaments: no saturated plateau, a bright thin core that falls off smoothly (real smoke-tunnel photos)
+  float v = clamp(d.a * uGain, 0.0, 1.0);
+  float a = 0.85 * smoothstep(0.05, 0.7, v);
+  a *= smoothstep(0.0, 0.02, vUv.x - 0.015) * (1.0 - smoothstep(0.93, 0.995, vUv.x));
+  if (a < 0.004) discard;
+  vec3 c = mix(uTint, d.rgb / max(d.a, 1e-4), uMulti);
+  gl_FragColor = vec4(c * 0.94, a * uOpacity);
   #include <colorspace_fragment>
 }`;
 
@@ -227,6 +251,14 @@ export function init(ctx) {
   const sheet = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), vMat);
   sheet.frustumCulled = false; sheet.visible = false; sheet.renderOrder = 5;
   (sc.root || sc.scene).add(sheet);
+  const dMat = new THREE.ShaderMaterial({
+    vertexShader: DVERT, fragmentShader: DFRAG, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
+    uniforms: { uDye: { value: null }, uSize: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 } },
+  });
+  const flatSheet = new THREE.Mesh(new THREE.PlaneGeometry(TUN.x1 - TUN.x0, TUN.y1 - TUN.y0), dMat);
+  flatSheet.position.set(0.5 * (TUN.x0 + TUN.x1), 0.5 * (TUN.y0 + TUN.y1), 0);
+  flatSheet.frustumCulled = false; flatSheet.visible = false; flatSheet.renderOrder = 5;
+  (sc.root || sc.scene).add(flatSheet);
   // model depth pass (layer 7 only), drawn from inside the main render so the camera is exactly the one used
   const DLAYER = 7;
   const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
@@ -296,7 +328,17 @@ export function init(ctx) {
   function updateSheet(view, fade, dt) {
     plane.setView({ lines: view.lines * (ctx.quality ? ctx.quality.scale : 1), density: view.density });
     const tex = dyeTexture();
-    if (!tex) { sheet.visible = false; return; }
+    if (!tex) { sheet.visible = false; flatSheet.visible = false; return; }
+    const qs = ctx.quality ? ctx.quality.scale : 1, sq = view.smokeQ || 'auto';
+    const mode = sq !== 'auto' ? sq : qs <= 0.35 ? 'flat' : state.get().tier === 'high' ? 'high' : 'low';
+    if (mode === 'flat') {
+      const d = dMat.uniforms; d.uDye.value = tex; d.uSize.value.copy(vMat.uniforms.uSize.value);
+      col.set(HEX[view.smokeColor] || HEX.white); d.uTint.value.set(col.r, col.g, col.b);
+      d.uMulti.value = view.smokeColor === 'multi' ? 1 : 0;
+      d.uOpacity.value = fade * (0.5 + 0.5 * view.density); d.uGain.value = 1.15 + 0.5 * view.density;
+      sheet.visible = false; flatSheet.visible = true; return;
+    }
+    flatSheet.visible = false;
     modelWidth();
     const u = vMat.uniforms; u.uDye.value = tex;
     VT[0] += dt; u.uTime.value = VT[0] % 1000; u.uU.value = UV[0] * 0.9;
@@ -307,11 +349,12 @@ export function init(ctx) {
     const bx = ctx.modelview && ctx.modelview.box;
     u.uMod.value.set(bx ? bx.x0 : -0.2, bx ? bx.x1 : 0.2, yC, yH);
     const zb = Math.min(1.1, 1.9 * (hn + hm + hw) + 0.01);
-    u.uBMin.value.set(TUN.x0 + 0.02, TUN.y0, -zb); u.uBMax.value.set(TUN.x1 - 0.02, TUN.y1, zb);
-    sheet.scale.set(u.uBMax.value.x - u.uBMin.value.x, TUN.y1 - TUN.y0, 2 * zb);
-    sheet.position.set(0.5 * (u.uBMin.value.x + u.uBMax.value.x), 0.5 * (TUN.y0 + TUN.y1), 0);
-    const tn = state.get().tier === 'high' ? 'high' : 'low', qs = ctx.quality ? ctx.quality.scale : 1;
-    u.uSteps.value = cfg.steps > 0 ? Math.min(96, cfg.steps) : Math.round(Math.max(12, (tn === 'high' ? 64 : 48) * Math.min(1, 0.4 + 0.6 * qs)));
+    const yLo = Math.max(TUN.y0, -0.70), yHi = Math.min(TUN.y1, 0.70);
+    u.uBMin.value.set(TUN.x0 + 0.02, yLo, -zb); u.uBMax.value.set(TUN.x1 - 0.02, yHi, zb);
+    sheet.scale.set(u.uBMax.value.x - u.uBMin.value.x, yHi - yLo, 2 * zb);
+    sheet.position.set(0.5 * (u.uBMin.value.x + u.uBMax.value.x), 0.5 * (yLo + yHi), 0);
+    const base = mode === 'high' ? 56 : mode === 'mid' ? 30 : 18;
+    u.uSteps.value = cfg.steps > 0 ? Math.min(96, cfg.steps) : Math.round(Math.max(12, base * Math.min(1, 0.4 + 0.6 * qs)));
     sc.camera.getWorldPosition(camPos);
     col.set(HEX[view.smokeColor] || HEX.white); u.uTint.value.set(col.r, col.g, col.b);
     u.uMulti.value = view.smokeColor === 'multi' ? 1 : 0;
@@ -533,13 +576,14 @@ export function init(ctx) {
     if ((st.tier === 'high' ? 'high' : 'low') !== tierName) alloc(st.tier);
     const target = view.flow === 'smoke' ? 1 : 0, step = dt / FADE_S;
     const df = target - Z[0]; Z[0] += df > step ? step : df < -step ? -step : df;
-    if (Z[0] <= 0.001) { if (mesh.visible) mesh.visible = false; if (sheet.visible) sheet.visible = false; return; }
+    if (Z[0] <= 0.001) { if (mesh.visible) mesh.visible = false; if (sheet.visible) sheet.visible = false; if (flatSheet.visible) flatSheet.visible = false; return; }
     if (plane && view.rake !== 'grid') {             // laser sheet: the solver's dye field
       if (mesh.visible) { mesh.visible = false; nL = 0; }
       updateSheet(view, Z[0], dt);
       return;
     }
     if (sheet.visible) sheet.visible = false;
+    if (flatSheet.visible) flatSheet.visible = false;
     let want = Math.round(view.lines * (ctx.quality ? ctx.quality.scale : 1)); want = want < 1 ? 1 : want > L ? L : want;
     if (!mesh.visible) { mesh.visible = true; findLight(); nL = 0; }
     if (want !== nL || view.rake !== curRake) { nL = want; curRake = view.rake; layout(view); reset(); }
@@ -553,7 +597,7 @@ export function init(ctx) {
   alloc(state.get().tier);
   return ctx.smoke = {
     object: mesh, cfg, update, reset: () => { if (nL) reset(); },
-    dispose() { mesh.parent && mesh.parent.remove(mesh); mesh.geometry.dispose(); material.dispose(); profile.dispose(); vMat.dispose(); noise.dispose(); depthMat.dispose(); if (depthRT) depthRT.dispose(); sheet.parent && sheet.parent.remove(sheet); },
+    dispose() { mesh.parent && mesh.parent.remove(mesh); mesh.geometry.dispose(); material.dispose(); profile.dispose(); vMat.dispose(); noise.dispose(); depthMat.dispose(); if (depthRT) depthRT.dispose(); sheet.parent && sheet.parent.remove(sheet); flatSheet.parent && flatSheet.parent.remove(flatSheet); flatSheet.geometry.dispose(); dMat.dispose(); },
     // exposed for tests
     _debug: () => ({ P, cnt, head, N, L, nL }),
   };

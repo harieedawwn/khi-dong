@@ -439,7 +439,8 @@ html[data-layout="phone-l"] .plate__title { font-size: clamp(.68rem, 1.9vw, .86r
 #dock .p8-extra:not(.p8-collapsed) { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 #topRight #hud { background: transparent; border: 0; padding: 0; }
 html[data-layout="tablet"] .dock-wrap { padding-right: calc(var(--tools-w) + 16px); }
-.p8-badges { display: flex; flex-wrap: wrap; gap: 4px; min-height: 0; }
+.p8-ch-cv { position: relative; }
+.p8-badges { position: absolute; top: 4px; right: 6px; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; min-height: 0; pointer-events: none; }
 .p8-badges:empty { display: none; }
 .badge--warn { background: #FFF1C2; border-color: #D98E04; color: #6B4A00; text-transform: none; letter-spacing: 0; font-family: var(--font-ui); font-size: var(--fs-xs); font-weight: 600; }
 .p8-tile .p8-tile-v .p8-w { display: block; margin-left: 0; line-height: 1.3; }

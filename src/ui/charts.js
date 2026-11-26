@@ -71,13 +71,13 @@ export function init(ctx) {
     for (const [k] of BADGES) setShown(badgeEls.get(k), !!(a && a[k]));
   }
   const cv = h('canvas', { role: 'img', 'aria-label': 'Biểu đồ lực' });
-  const cvWrap = h('div', { class: 'p8-ch-cv' }, cv);
+  const cvWrap = h('div', { class: 'p8-ch-cv' }, cv, badgeRow);
   const pinBtn = h('button', { type: 'button', class: 'btn btn-primary', onClick: () => addPin() }, 'Ghim cấu hình');
   const pinList = h('div', { class: 'p8-pins', 'aria-label': 'Cấu hình đã ghim' });
   const bar = h('div', { class: 'p8-ch-bar' }, pinBtn, h('span', { class: 'p8-sp' }), metricBox, timeTools);
   if (mount) {
     mount.textContent = '';
-    mount.appendChild(h('div', { class: 'p8-ch' }, tabbar, badgeRow, cvWrap, bar, pinList));
+    mount.appendChild(h('div', { class: 'p8-ch' }, tabbar, cvWrap, bar, pinList));
   }
 
   /* ---------- theme + canvas ---------- */
