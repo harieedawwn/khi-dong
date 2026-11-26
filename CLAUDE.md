@@ -1,7 +1,7 @@
 # CLAUDE.md — ống khí động (Vật lí 10, Bài 19)
 
 Hợp đồng: `SPEC.md`. Dòng chảy / khói: `HANDOFF-flow.md`. Tiến độ: `PROGRESS.md` ("Đọc PROGRESS.md và làm tiếp").
-Không đụng `src/geom/`. Được sửa `src/ui/` theo TASK.md.
+Việc hiện tại: TASK.md (1 phase / phiên). Chỉ sửa `src/geom/` khi phase trong TASK.md cho phép (và chạy `npm test`).
 
 ## Lệnh
 ```bash
