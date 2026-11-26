@@ -7,7 +7,7 @@ Quy tắc chung (mọi phase):
 - Không đổi vật lý/bộ giải. Tiếng Việt đủ dấu. Vùng chạm ≥ 44px trên cảm ứng (`@media (pointer:coarse)`), không tràn ngang ở 360px.
 - Báo ≤ 5 dòng rồi dừng.
 
-## [ ] P1 — Giao diện gọn, nhỏ hơn, thoáng khung 3D (Sonnet 5.5 · medium)
+## [x] P1 — Giao diện gọn, nhỏ hơn, thoáng khung 3D (Sonnet 5.5 · medium)
 Files: src/styles.css, src/ui/shell.js, src/ui/readouts.js, src/ui/builder.js, src/ui/controls.js (chỉ phần cần).
 1. Tên trường KHÔNG BAO GIỜ xuống dòng: `.school` `white-space:nowrap; width:max-content; max-width:100%`; cỡ chữ tự co theo chỗ trống:
    thêm hàm `fitOneLine(el, minPx=10, maxPx)` trong shell.js (ResizeObserver trên #topRight + resize): đặt font-size = max, nếu scrollWidth > clientWidth thì co theo tỉ lệ clientWidth/scrollWidth (1 lần đo, không vòng lặp). Bỏ `text-wrap:balance` của .school. Áp dụng luôn cho `.plate__title` (tiêu đề giữa) nếu nó cũng xuống dòng.

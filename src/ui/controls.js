@@ -221,7 +221,7 @@ export function init(ctx) {
         h('div', { class: 'p8-stack', style: 'gap:2px' },
           h('div', { class: 'p8-row p8-between' }, h('span', { class: 'p8-lab' }, 'Góc tấn α'), aVal),
           h('div', { class: 'p8-sw' }, zeroTickL, zeroTick, aRange)),
-        h('div', { class: 'dock-row dock-full' }, h('span', { class: 'dock-play', role: 'group', 'aria-label': 'Phát dòng khí' }, pauseBtn, ...playBtns), scBtn, moreBtn)),
+        h('div', { class: 'dock-row dock-full' }, h('span', { class: 'dock-play', role: 'group', 'aria-label': 'Phát dòng khí' }, pauseBtn, ...playBtns, h('span', { class: 'dock-slow', id: 'dockSlow', title: 'Mô phỏng chạy chậm so với thật; mọi số đo dùng tốc độ thật' })), scBtn, moreBtn)),
       extra));
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
       dock.classList.toggle('p8-narrow', dock.clientWidth < 520);

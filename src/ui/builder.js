@@ -1,6 +1,14 @@
 // src/ui/builder.js  (P4)  Công cụ 2 "Tự lắp ghép": chọn mũi, thân, đuôi, cánh, đuôi lái và kéo kích thước.
 // Gắn vào #modelPanel khi state.mode === 'builder'. Ghi state.builder (trễ 150 ms). Thanh trượt sinh từ catalog.SLOTS.
 const TAB_LABEL = { nose: 'Mũi', body: 'Thân', tail: 'Đuôi', wing: 'Cánh', fins: 'Đuôi lái' };
+const SI = 'viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"';
+const TPL_ICON = {
+  rocket: `<svg ${SI}><path d="M12 2.5c3 2.4 4.5 5.6 4.5 9.5v4.5h-9V12c0-3.900 1.500-7.100 4.500-9.500z"/><circle cx="12" cy="10" r="1.600"/><path d="M7.500 13.500 4.500 17v3l3-1.500M16.500 13.500l3 3.500v3l-3-1.500M10 19.500h4l-2 2.500z"/></svg>`,
+  plane: `<svg ${SI}><path d="M12 2.500c.9 0 1.500.9 1.500 2V9l8 4.500v2L13.500 13v4.500l2.500 1.800V21l-4-1-4 1v-1.700l2.500-1.800V13L2.500 15.500v-2L10.500 9V4.500c0-1.100.6-2 1.500-2z"/></svg>`,
+  teardrop: `<svg ${SI}><path d="M12 3C8 8.500 5.500 12 5.500 15a6.500 6.500 0 0 0 13 0C18.500 12 16 8.500 12 3z"/></svg>`,
+  car: `<svg ${SI}><path d="M3 16v-3.500l2-4.500c.3-.7 1-1 1.700-1h10.600c.7 0 1.400.4 1.700 1l2 4.500V16h-2M3 16h2m14 0H9"/><circle cx="7" cy="16.500" r="2"/><circle cx="17" cy="16.500" r="2"/><path d="M5 12h14"/></svg>`,
+  reset: `<svg ${SI}><path d="M4 12a8 8 0 1 0 2.600-5.900M4 4v4.500h4.500"/></svg>`,
+};
 const TEMPLATE_ORDER = ['rocket', 'plane', 'teardrop', 'car'];
 const CSS = `
 .bld{display:flex;flex-direction:column;gap:8px;min-height:0;height:100%}
@@ -8,6 +16,9 @@ const CSS = `
 .bld-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex:0 0 auto}
 .bld .chip,.bld .btn{min-height:36px;padding:0 9px;font-size:12.5px;line-height:1.4;cursor:pointer;touch-action:manipulation;justify-content:center}
 .bld .btn{display:inline-flex;align-items:center;border:1px solid var(--line,rgba(27,29,33,.14));border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:13px}
+.bld-top{gap:4px 6px}.bld-top .bld-lbl{flex:0 0 100%;font-size:11px}
+.bld .bld-tpl{width:36px;min-width:36px;padding:0;display:inline-grid;place-items:center}
+.bld .seg button{color:var(--ink,#1B1D21)}.bld .seg button[aria-pressed="true"]{color:var(--paper,#F4F1EA)}
 .bld-lbl{flex:0 0 auto;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted,#5E636B)}
 .bld-top .chip{font-weight:600;border-color:var(--red,#C8102E);color:var(--red,#C8102E)}
 .bld-tabs{display:flex;gap:4px;flex:0 0 auto;border-bottom:1px solid var(--line,rgba(27,29,33,.14))}
@@ -29,11 +40,12 @@ const CSS = `
 .bld-row .seg button{min-height:36px;padding:0 10px;font:inherit;font-size:13px;cursor:pointer}
 .bld-sum{flex:0 0 auto;font-size:12.5px;line-height:1.4;padding-top:6px;border-top:1px solid var(--line,rgba(27,29,33,.14));font-variant-numeric:tabular-nums}
 .bld-sum b{font-weight:600}
-@media (pointer:coarse){.bld-row input[type=range]{min-height:40px}.bld .chip,.bld .btn,.bld-row .seg button{min-height:44px}.bld-tabs button{min-height:44px}}
+@media (pointer:coarse){.bld .bld-tpl{width:44px;min-width:44px}.bld-row input[type=range]{min-height:40px}.bld .chip,.bld .btn,.bld-row .seg button{min-height:44px}.bld-tabs button{min-height:44px}}
 `;
 const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d).replace('.', ',') : '—');
 const decimals = step => (step >= 1 ? 0 : step >= 0.1 ? 1 : 2);
 const shortLabel = s => s.replace(/\s*\(.*\)\s*/, '');
+const syncSeg = seg => { const bs = [...seg.children].filter(x => x.tagName === 'BUTTON'); seg.style.setProperty('--n', bs.length); seg.style.setProperty('--i', Math.max(0, bs.findIndex(x => x.getAttribute('aria-pressed') === 'true'))); };
 const clone = b => ({ ...b, p: { ...(b.p || {}) } });
 
 // hình bóng nhỏ cho từng lựa chọn (viewBox 40x22); mũi hướng về bên trái, cánh nhìn từ trên, đuôi lái nhìn từ phía sau
@@ -62,10 +74,10 @@ export function init(ctx) {
   // ---- dựng từ mẫu (bấm là có hình đẹp, rồi chỉnh tham số) + đặt lại
   const lbl = document.createElement('div'); lbl.className = 'bld-lbl'; lbl.textContent = 'Dựng từ mẫu'; top.appendChild(lbl);
   for (const k of TEMPLATE_ORDER.filter(k => catalog.TEMPLATES && catalog.TEMPLATES[k])) {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = catalog.TEMPLATES[k].label;
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip bld-tpl'; b.innerHTML = TPL_ICON[k] || ''; if (!TPL_ICON[k]) b.textContent = catalog.TEMPLATES[k].label; b.setAttribute('aria-label', catalog.TEMPLATES[k].label); b.title = catalog.TEMPLATES[k].label;
     b.addEventListener('click', () => { ctx.sfx && ctx.sfx.play('tap'); setAll(clone(catalog.TEMPLATES[k].builder)); }); top.appendChild(b);
   }
-  const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'btn'; reset.textContent = 'Đặt lại';
+  const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'btn bld-tpl'; reset.innerHTML = TPL_ICON.reset; reset.setAttribute('aria-label', 'Đặt lại'); reset.title = 'Đặt lại';
   reset.addEventListener('click', () => { ctx.sfx && ctx.sfx.play('tap'); setAll({ ...catalog.DEFAULT_BUILDER, p: catalog.defaultParams() }); }); top.appendChild(reset);
 
   // ---- tab bộ phận
@@ -110,14 +122,14 @@ export function init(ctx) {
     if (q.type === 'choice') { // biên dạng cánh
       row.innerHTML = '<label><span></span></label><div class="seg" role="group"></div>'; row.querySelector('label span').textContent = q.label; const seg = row.querySelector('.seg');
       for (const o of q.options) { const b = document.createElement('button'); b.type = 'button'; b.textContent = shortLabel(o.label); b.setAttribute('aria-pressed', String(cur === o.id)); b.title = o.label;
-        b.addEventListener('click', () => { local.p[q.id] = o.id; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); ctx.sfx && ctx.sfx.play('tick'); summary(); commit(false); }); seg.appendChild(b); }
-      return row;
+        b.addEventListener('click', () => { local.p[q.id] = o.id; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); syncSeg(seg); ctx.sfx && ctx.sfx.play('tick'); summary(); commit(false); }); seg.appendChild(b); }
+      syncSeg(seg); return row;
     }
     if (q.max - q.min <= 1 && q.step >= 1) { // công tắc 0/1 (bánh xe)
       row.classList.add('inline'); row.innerHTML = '<label><span></span></label><div class="seg" role="group"></div>'; row.querySelector('label span').textContent = q.label.replace(/\s*\(.*\)/, ''); const seg = row.querySelector('.seg');
       for (const [v, t] of [[0, 'Không'], [1, 'Có']]) { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; b.setAttribute('aria-pressed', String(Math.round(cur) === v));
-        b.addEventListener('click', () => { local.p[q.id] = v; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); ctx.sfx && ctx.sfx.play('toggle'); summary(); commit(false); }); seg.appendChild(b); }
-      return row;
+        b.addEventListener('click', () => { local.p[q.id] = v; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); syncSeg(seg); ctx.sfx && ctx.sfx.play('toggle'); summary(); commit(false); }); seg.appendChild(b); }
+      syncSeg(seg); return row;
     }
     const id = 'bld-' + q.id, d = decimals(q.step), unit = q.unit ? ' ' + q.unit : '';
     row.classList.add('slider');

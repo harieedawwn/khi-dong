@@ -462,3 +462,31 @@ html[data-layout^="phone"] .p8-set-sheet, html[data-layout="tablet"] .p8-set-she
   border-radius: 16px 16px 0 0; padding-bottom: calc(.75rem + var(--sab, 0px));
 }
 .p8-set-sheet .icon-btn { width: 44px; height: 44px; min-width: 44px; font-size: 1.4rem; }
+
+/* ---------- P1 đợt 3: giao diện gọn, thoáng khung 3D ---------- */
+:root { --ui: 1; }
+html[data-layout="tablet"] { --ui: .9; }
+.panel { padding: calc(.75rem * var(--ui)) calc(.875rem * var(--ui)); }
+.plate { padding: calc(.4rem * var(--ui)) 1.1rem; border-radius: 12px; }
+.plate__title { white-space: nowrap; font-size: clamp(.78rem, 1.15vw, 1.02rem); text-wrap: nowrap; }
+.title-wrap { padding: 0 calc(max(var(--tools-w), var(--tr-w)) + 28px); }
+#topRight { width: clamp(17rem, 22vw, 21rem); gap: 6px; }
+.school { white-space: nowrap; width: max-content; max-width: 100%; text-wrap: nowrap; padding: calc(.35rem * var(--ui)) .75rem calc(.35rem * var(--ui)) .85rem;
+  font-size: clamp(.74rem, .98vw, .9rem); border-radius: 10px; border-left-width: 5px; overflow: hidden; }
+.toolbar { gap: 4px; padding: 3px; }
+.toolbar .icon-btn { width: 36px; height: 36px; min-width: 36px; }
+@media (pointer:coarse) { .toolbar .icon-btn, html[data-layout^="phone"] .toolbar .icon-btn { width: 44px; height: 44px; min-width: 44px; } }
+html.is-touch .toolbar .icon-btn { width: 44px; height: 44px; min-width: 44px; }
+#colL { bottom: auto; width: clamp(16rem, 20vw, 18.75rem); max-height: calc(var(--vh100, 100vh) - 68px - 16px - 70px); }
+html[data-layout="tablet"] #colL { bottom: auto; width: 16rem; max-height: calc(var(--vh100, 100vh) - var(--plate-h) - var(--tr-h) - 130px); }
+#modelPanel { flex: 0 1 auto; height: auto; overflow: auto; }
+#colR { width: clamp(17rem, 21vw, 21rem); }
+html[data-layout="tablet"] #topRight, html[data-layout^="phone"] #topRight { width: auto; }
+html[data-layout^="phone"] .school, html[data-layout="tablet"] .school { width: auto; max-width: 100%; box-sizing: border-box; }
+html[data-layout^="phone"] .plate__title, html[data-layout="tablet"] .plate__title { white-space: nowrap; }
+#legend:not(:has(.p8-lg:not([hidden]))) { display: none; }
+.p8-hud { display: flex; flex-wrap: wrap; gap: 2px 14px; align-items: baseline; font-family: var(--font-mono); font-size: var(--fs-s); font-variant-numeric: tabular-nums;
+  padding: 0 0 .35rem; border-bottom: 1px solid var(--line); background: transparent; }
+.dock-slow { font-size: var(--fs-xs); color: var(--muted); margin-left: 4px; white-space: nowrap; }
+.dock-slow:empty { display: none; }
+.bld { height: auto; }

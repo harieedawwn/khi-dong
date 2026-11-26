@@ -203,7 +203,7 @@ export function createShell(state) {
   const stage = el('div', { id: 'stage', class: 'stage' });
   const hud = el('div', { id: 'hud', 'aria-live': 'off' });
   const school = el('div', { class: 'school', text: SCHOOL });
-  const topRight = el('div', { id: 'topRight' }, [school, hud]);
+  const topRight = el('div', { id: 'topRight' }, [school]);
   const legend = el('div', { id: 'legend' });
   const dock = el('div', { id: 'dock', class: 'panel', role: 'group', 'aria-label': 'Điều khiển gió' });
   const dockWrap = el('div', { class: 'dock-wrap' }, dock);
@@ -474,6 +474,23 @@ export function createShell(state) {
     const ro = new ResizeObserver(scheduleSync);
     [colL, colR, plate, dock, stage, topRight, tools, dockWrap].forEach(n => ro.observe(n));
   }
+  /* chữ một dòng: đặt cỡ lớn nhất, nếu tràn thì co theo tỉ lệ (một lần đo) */
+  function fitOneLine(node, minPx = 10, maxPx) {
+    if (!node) return;
+    const fit = () => {
+      node.style.fontSize = '';
+      const max = maxPx || parseFloat(getComputedStyle(node).fontSize) || 14;
+      node.style.fontSize = max + 'px';
+      const cw = node.clientWidth, sw = node.scrollWidth;
+      if (cw > 0 && sw > cw) node.style.fontSize = Math.max(minPx, max * cw / sw * 0.97) + 'px';
+    };
+    let q = 0; const run = () => { if (q) return; q = requestAnimationFrame(() => { q = 0; fit(); }); };
+    if ('ResizeObserver' in window) { const r = new ResizeObserver(run); r.observe(topRight); r.observe(title); }
+    window.addEventListener('resize', run); run();
+    if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(run);
+  }
+  fitOneLine(school, 10);
+  fitOneLine(plate.querySelector('.plate__title'), 10);
 
   /* --- guide (coach marks) --- */
   let guideOn = false, step = 0, openedDrawer = false;

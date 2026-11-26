@@ -104,6 +104,11 @@ export function init(ctx) {
     kvRow('Aref', 'Diện tích tham chiếu A', true),
     kvRow('Lref', 'Chiều dài tham chiếu L'))));
 
+  /* Hàng số liệu gọn ở đầu panel phải (thay cho thẻ HUD nổi); "mô phỏng chậm" nằm trong dock */
+  const hudF = { FD: h('span', { class: 'p8-num' }), FL: h('span', { class: 'p8-num' }), U: h('span', { class: 'p8-num' }) };
+  const hudRow = h('div', { class: 'p8-hud' }, h('span', null, sym('F', 'cản'), ' ', hudF.FD), h('span', null, sym('F', 'nâng'), ' ', hudF.FL), h('span', null, 'v ', hudF.U));
+  let slowEl = null;
+
   const detail = h('div', { class: 'p8-stack', id: 'p8-detail' }, flowGroup, airGroup, analysisGroup);
   const toggle = h('button', { type: 'button', class: 'btn p8-btn', 'aria-expanded': 'false', 'aria-controls': 'p8-detail', onClick: () => setExpanded(!expanded) }, 'Thêm số đo');
   let expanded = false;
@@ -116,17 +121,8 @@ export function init(ctx) {
   }
   if (root) {
     root.textContent = '';
-    root.appendChild(h('div', { class: 'p8-stack' }, mainGroup, probeGroup, toggle, detail));
+    root.appendChild(h('div', { class: 'p8-stack' }, hudRow, mainGroup, probeGroup, toggle, detail));
     setExpanded(false);
-  }
-
-  /* HUD */
-  const hudF = { FD: h('span', { class: 'p8-num' }), FL: h('span', { class: 'p8-num' }), U: h('span', { class: 'p8-num' }), slow: h('span', { class: 'p8-num' }) };
-  if (hudEl) {
-    hudEl.textContent = '';
-    hudEl.appendChild(h('div', { class: 'p8-hud' },
-      h('span', null, sym('F', 'cản'), ' ', hudF.FD), h('span', null, sym('F', 'nâng'), ' ', hudF.FL),
-      h('span', null, 'v ', hudF.U), h('span', { class: 'p8-sub' }, 'Mô phỏng chậm ', hudF.slow)));
   }
 
   /* Legend */
@@ -264,7 +260,7 @@ export function init(ctx) {
     }
     // HUD
     setText(hudF.FD, D('hudFD', fmtVal(c.FD, 'N'))); setText(hudF.FL, D('hudFL', fmtVal(c.FL, 'N')));
-    setText(hudF.U, D('hudU', fmtVal(c.U, 'm/s'))); setText(hudF.slow, D('hudSlow', '×' + fmtNum(c.slow, { sig: 2 })));
+    setText(hudF.U, D('hudU', fmtVal(c.U, 'm/s'))); slowEl = slowEl && slowEl.isConnected ? slowEl : document.getElementById('dockSlow'); if (slowEl) setText(slowEl, D('hudSlow', 'chậm ×' + fmtNum(c.slow, { sig: 2 })));
     drawLegend(false);
   }
 
