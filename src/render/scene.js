@@ -22,6 +22,8 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 const DEG = Math.PI / 180;
 // Test section (SPEC §3)
 const X0 = -3, X1 = 3, YH = 0.8, ZH = 1.2;
+const TUN_X0 = -4.3, TUN_X1 = 4.75;          // = CX0 / HX1 (ống thu, vỏ quạt)
+const TUN_CX = (TUN_X0 + TUN_X1) / 2, TUN_HW = (TUN_X1 - TUN_X0) / 2 + 0.15, TUN_ZN = 1.8; // TUN_ZN: mặt miệng ống thu gần camera nhất (z = CZ0)
 const FLOOR_Y = -YH;            // top of the floor panel
 const HALL_Y = -2.0;            // hall floor
 const CAM_MIN_Y = FLOOR_Y + 0.06; // camera never goes below the tunnel floor
@@ -225,10 +227,10 @@ export function createScene(opts = {}) {
     g.setIndex(idx); g.computeVertexNormals();
     return g;
   }
-  const CX0 = -4.7, CZ0 = 1.8, CY0 = 1.3;
+  const CX0 = TUN_X0, CZ0 = 1.75, CY0 = 1.25;
   const sm = (t) => t * t * (3 - 2 * t);
   const contraction = loft(CX0, X0, 12, (t, s) => { const e = sm(t); s.zz = CZ0 + (ZH - CZ0) * e; s.yy = CY0 + (YH - CY0) * e; s.c = 0; });
-  const R_F = 1.15, DX1 = 4.5, HX1 = 5.1;
+  const R_F = 1.15, DX1 = 4.2, HX1 = TUN_X1;
   const dif = loft(X1, DX1, 12, (t, s) => { const e = sm(t); s.zz = ZH + (R_F - ZH) * e; s.yy = YH + (R_F - YH) * e; s.c = e; s.R = R_F; });
   const housing = loft(DX1, HX1, 2, (t, s) => { s.zz = R_F; s.yy = R_F; s.c = 1; s.R = R_F; });
   const duct = new THREE.Mesh(mergeGeometries([contraction], false, 'contraction'),
@@ -275,7 +277,7 @@ export function createScene(opts = {}) {
   screenPlane(CX0 + 1.1, meshTex, 50, 50, 0xFFFFFF);
 
   /* ------------------------------------------------------- fan + nacelle */
-  const fan = new THREE.Group(); fan.position.set(4.65, 0, 0);
+  const fan = new THREE.Group(); fan.position.set(DX1 + 0.15, 0, 0);
   {
     const parts = [];
     const hub = new THREE.CylinderGeometry(0.17, 0.2, 0.34, 16); hub.rotateZ(Math.PI / 2); paint(hub, 0x444B53); parts.push(hub);
@@ -288,11 +290,11 @@ export function createScene(opts = {}) {
     fan.add(fm);
     const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.5, 16).rotateZ(Math.PI / 2).translate(0.3, 0, 0),
       new THREE.MeshStandardMaterial({ color: 0x4A525B, metalness: 0.5, roughness: 0.45 }));
-    scene.add(nac); nac.position.x = 4.65;
+    scene.add(nac); nac.position.x = DX1 + 0.15;
     for (const a of [0, 1, 2, 3]) { // stator struts
       const s = new THREE.Mesh(new THREE.BoxGeometry(0.03, R_F, 0.03).translate(0, R_F / 2, 0), steelMat.clone());
       s.material.vertexColors = false; s.material.color.set(0x4A525B);
-      s.rotation.x = a * Math.PI / 2; s.position.set(4.95, 0, 0); scene.add(s);
+      s.rotation.x = a * Math.PI / 2; s.position.set(HX1 - 0.15, 0, 0); scene.add(s);
     }
   }
   scene.add(fan);
@@ -351,7 +353,7 @@ export function createScene(opts = {}) {
     const dir = (x, y, z, d) => { const l = Math.hypot(x, y, z); o.dx = x / l; o.dy = y / l; o.dz = z / l; o.dist = d; };
     switch (name) {
       case 'close':  o.tx = 0; o.ty = 0; o.tz = 0; { const hw = Math.max(0.7, focusR * 1.55); dir(0.55, 0.3, 0.78, fit(hw, hw * 0.55)); } break;
-      case 'side':   o.tx = 0.1; o.ty = 0; o.tz = 0; { const hw = Math.max(1.7, focusR * 3.2); dir(0, 0.04, 1, fit(hw, hw * 0.42)); } break;
+      case 'side':   o.tx = TUN_CX; o.ty = -0.1; o.tz = 0; dir(0, 0.22, 1, fit(TUN_HW, 1.4) + TUN_ZN); break;   // cả ống (ống thu → vỏ quạt) vừa vùng trống giữa các bảng
       case 'top':    o.tx = 0.1; o.ty = 0; o.tz = 0; { const hw = Math.max(1.7, focusR * 3.2); dir(0, 1, 0.03, fit(hw, hw * 0.55)); } break;
       case 'wake':   o.tx = 1.3; o.ty = 0; o.tz = 0; dir(0.8, 0.2, 0.56, fit(1.7, 0.95)); break;
       case 'inside': o.tx = 0.4; o.ty = 0; o.tz = -0.05; { const px = -2.25, py = 0.2, pz = 1.02; dir(px - o.tx, py - o.ty, pz - o.tz, Math.hypot(px - o.tx, py - o.ty, pz - o.tz)); } break;
