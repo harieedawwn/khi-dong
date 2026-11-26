@@ -28,6 +28,7 @@ export const SLOTS = [
   { key: 'fins', label: 'Cánh ổn định', options: [O('none', 'Không có'), O('tee', 'Đuôi chữ T'), O('cross', 'Bốn cánh chữ thập')],
     params: [{ id: 'size', label: 'Cỡ cánh ổn định', min: 0.02, max: 0.3, step: 0.01, default: 0.08, unit: 'm' }] },
 ];
+export const NOSE_MAX_CAR = 0.3; // thân kiểu xe: mũi dài tối đa (m)
 export const PARAMS = {}; for (const s of SLOTS) for (const q of s.params) PARAMS[q.id] = q;
 export const DEFAULT_BUILDER = { nose: 'ogive', body: 'round', tail: 'point', wing: 'none', fins: 'cross' };
 export function defaultParams() { const p = {}; for (const k in PARAMS) p[k] = PARAMS[k].default; return p; }
@@ -61,6 +62,7 @@ export function layout(builder) {
   const W = D, Hh = D * hr, Rm = Math.min(W, Hh) / 2;
   let nl = p.noseLen, Lb = p.length, tl = tail === 'point' ? clamp(Rm / Math.tan(p.boattailDeg * Math.PI / 180), 0.5 * Rm, 0.9) : tail === 'round' ? 1.5 * Rm : 0.9 * Rm;
   if (nose === 'flat') nl = Math.min(nl, 0.3);
+  if (wheels) nl = Math.min(nl, NOSE_MAX_CAR);
   if (nl + Lb + tl > 1.598) { Lb = Math.max(0.05, 1.598 - nl - tl); if (nl + Lb + tl > 1.6) { const f = (1.598 - Lb) / (nl + tl); nl *= f; tl *= f; } }
   const Ltot = nl + Lb + tl, x0 = -Ltot / 2, xb0 = x0 + nl, xt0 = xb0 + Lb, xEnd = x0 + Ltot;
   let wingL = null;

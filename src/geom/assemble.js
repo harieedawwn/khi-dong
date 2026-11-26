@@ -7,9 +7,9 @@ import { BufferGeometry, Float32BufferAttribute, Uint32BufferAttribute } from 't
 
 // Tông: 0 sơn chính, 1 viền / sơn phụ, 2 đen (lốp, nhựa), 3 kính, 4 đèn trắng, 5 đèn đỏ, 6 crôm / nhôm, 7 sơn phụ thứ hai.
 // parts.palette = {0: 0xRRGGBB, ...} đổi màu theo mô hình (màu sơn thực tế); heatmap vẫn ghi đè màu khi bật.
-export const TONE_HEX = [0xE9E6DF, 0xB9BEC4, 0x2B2F35, 0x161D26, 0xF4F1E6, 0xA3262B, 0xC9CED3, 0xE9E6DF];
+export const TONE_HEX = [0xE9E6DF, 0xB9BEC4, 0x2B2F35, 0x2C3E52, 0xF4F1E6, 0xA3262B, 0xC9CED3, 0xE9E6DF];
 // [độ nhám, kim loại] theo tông
-export const TONE_MAT = [[0.34, 0.22], [0.5, 0.05], [0.82, 0.0], [0.07, 0.75], [0.2, 0.1], [0.25, 0.1], [0.2, 0.95], [0.34, 0.22]];
+export const TONE_MAT = [[0.34, 0.22], [0.5, 0.05], [0.82, 0.0], [0.1, 0.45], [0.2, 0.1], [0.25, 0.1], [0.2, 0.95], [0.34, 0.22]];
 const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
 const rgbOf = h => [lin((h >> 16) & 255), lin((h >> 8) & 255), lin(h & 255)];
 export const TONE_RGB = TONE_HEX.map(rgbOf);

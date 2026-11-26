@@ -93,6 +93,7 @@ export function init(ctx) {
   }
   function setAll(b) { local = clone(b); renderSlot(); commit(true); }
 
+  const car = () => (local.p.wheels ?? 0) >= 0.5; // thân kiểu xe (có bánh)
   // thông số nào có tác dụng với lựa chọn hiện tại
   function relevant(key, pid) {
     if (key === 'body' && pid === 'heightRatio') return local.body !== 'round';
@@ -113,12 +114,12 @@ export function init(ctx) {
       opts.appendChild(b);
     }
     body.appendChild(opts);
-    for (const q of S.params) { if (!relevant(S.key, q.id)) continue; body.appendChild(paramRow(q)); }
+    for (const q of S.params) { if (!relevant(S.key, q.id)) continue; body.appendChild(paramRow(q.id === 'noseLen' && car() ? { ...q, max: Math.min(q.max, catalog.NOSE_MAX_CAR || q.max) } : q)); }
     summary();
   }
   function paramRow(q) {
     const row = document.createElement('div'); row.className = 'bld-row';
-    const cur = local.p[q.id] ?? q.default;
+    let cur = local.p[q.id] ?? q.default; if (q.type !== 'choice' && cur > q.max) { cur = q.max; local.p[q.id] = cur; }
     if (q.type === 'choice') { // biên dạng cánh
       row.innerHTML = '<label><span></span></label><div class="seg" role="group"></div>'; row.querySelector('label span').textContent = q.label; const seg = row.querySelector('.seg');
       for (const o of q.options) { const b = document.createElement('button'); b.type = 'button'; b.textContent = shortLabel(o.label); b.setAttribute('aria-pressed', String(cur === o.id)); b.title = o.label;
@@ -128,7 +129,7 @@ export function init(ctx) {
     if (q.max - q.min <= 1 && q.step >= 1) { // công tắc 0/1 (bánh xe)
       row.classList.add('inline'); row.innerHTML = '<label><span></span></label><div class="seg" role="group"></div>'; row.querySelector('label span').textContent = q.label.replace(/\s*\(.*\)/, ''); const seg = row.querySelector('.seg');
       for (const [v, t] of [[0, 'Không'], [1, 'Có']]) { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; b.setAttribute('aria-pressed', String(Math.round(cur) === v));
-        b.addEventListener('click', () => { local.p[q.id] = v; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); syncSeg(seg); ctx.sfx && ctx.sfx.play('toggle'); summary(); commit(false); }); seg.appendChild(b); }
+        b.addEventListener('click', () => { local.p[q.id] = v; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); syncSeg(seg); ctx.sfx && ctx.sfx.play('toggle'); renderSlot(); commit(false); }); seg.appendChild(b); }
       syncSeg(seg); return row;
     }
     const id = 'bld-' + q.id, d = decimals(q.step), unit = q.unit ? ' ' + q.unit : '';

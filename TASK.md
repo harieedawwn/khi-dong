@@ -25,7 +25,7 @@ Files: src/render/scene.js (+ preset camera nếu có, grep "camera"/"fit"). Kh�
 4. Giữ giá phun khói và ống dẫn xuyên tường.
 Done when: build ok; 2 ảnh (`--camera side`, góc chéo): thấy rõ mô hình + khói, không thanh nào cắt ngang vùng thử, ống ngắn gọn, vẫn trông thật.
 
-## [ ] P3 — Sửa Tự lắp ghép + viền mô hình răng cưa (Sonnet 5.5 · medium)
+## [x] P3 — Sửa Tự lắp ghép + viền mô hình răng cưa (Sonnet 5.5 · medium)
 Files: src/ui/builder.js, src/geom/{catalog,assemble,hull,parts}.js (ĐƯỢC SỬA trong phase này; phải chạy `npm test`), src/render/smoke.js (khoảng dòng 262-300).
 1. Lựa chọn hiển thị phải khớp mô hình: bấm mẫu "Ô tô" hiện ra Thân = "Tròn" và Bánh xe = "Không" trong khi xe có bánh. Sửa nguồn sự thật (TEMPLATES[k].builder ↔ cách assemble dựng hull) để tab nào cũng phản ánh đúng. Kiểm tra cả 4 mẫu × 5 tab.
 2. Với thân kiểu xe (car/truck hull) chỉ hiện các lựa chọn/thanh trượt có ý nghĩa (mở rộng `relevant()` và lọc option): không cho mũi ogive dài 0,6 m trên ô tô; giới hạn chiều dài mũi/đuôi hợp lý theo loại thân. Mục tiêu: kéo hết thanh vẫn ra hình hợp lý, không lố.

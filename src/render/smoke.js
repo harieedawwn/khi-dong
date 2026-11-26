@@ -37,7 +37,7 @@ uniform vec3 uBMin, uBMax, uTint, uFwd;
 uniform vec4 uTun;                       // x0, x1, y0, y1 of the dye grid
 uniform vec4 uH;                         // nozzle half-thickness, model add, wake add, puff/twist amount
 uniform vec4 uMod;                       // model x0, x1, y centre, y half-height
-uniform float uMulti, uOpacity, uGain, uTime, uU, uNear, uFar, uOrtho, uSteps, uStepMax, uDepthOn;
+uniform float uMulti, uOpacity, uGain, uTime, uU, uNear, uFar, uOrtho, uSteps, uStepMax, uDepthOn, uDepthTap;
 varying vec3 vW;
 vec4 dye(vec2 uv){                       // quintic reconstruction: crisp filaments without bilinear diamonds
   vec2 p = uv * uSize - 0.5, i = floor(p), f = p - i;
@@ -51,7 +51,13 @@ void main(){
   vec3 tn = min(ta, tb), tx = max(ta, tb);
   float t0 = max(max(tn.x, tn.y), max(tn.z, 0.0)), t1 = min(min(tx.x, tx.y), tx.z);
   if (uDepthOn > 0.5) {                  // stop at the model (its own depth pass)
-    float dd = unpackRGBAToDepth(texture2D(uDepth, gl_FragCoord.xy / uRes));
+    vec2 duv = gl_FragCoord.xy / uRes;
+    float dd = unpackRGBAToDepth(texture2D(uDepth, duv));
+    if (uDepthTap > 0.5) {               // half-resolution depth: take the farthest of the 4 nearest texels so no step shows at the silhouette
+      vec2 q = duv * uRes * 0.5 - 0.5, i0 = floor(q), r = uRes * 0.5;
+      dd = 0.0;
+      for (int k = 0; k < 4; k++) { vec2 o = vec2(float(k - (k / 2) * 2), float(k / 2)); dd = max(dd, unpackRGBAToDepth(texture2D(uDepth, (i0 + o + 0.5) / r))); }
+    }
     if (dd < 0.9999) {
       float vz = uOrtho > 0.5 ? orthographicDepthToViewZ(dd, uNear, uFar) : perspectiveDepthToViewZ(dd, uNear, uFar);
       t1 = min(t1, (-vz - dot(ro - cameraPosition, uFwd)) / max(dot(rd, uFwd), 1e-3));
@@ -241,7 +247,7 @@ export function init(ctx) {
       uDye: { value: null }, uNoise: { value: noise }, uDepth: { value: null }, uSize: { value: new THREE.Vector2(1, 1) }, uRes: { value: new THREE.Vector2(1, 1) },
       uBMin: { value: new THREE.Vector3() }, uBMax: { value: new THREE.Vector3() }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uFwd: { value: new THREE.Vector3(0, 0, -1) },
       uTun: { value: new THREE.Vector4(TUN.x0, TUN.x1, TUN.y0, TUN.y1) }, uH: { value: new THREE.Vector4(0.006, 0.1, 0.06, 0.6) }, uMod: { value: new THREE.Vector4(-0.2, 0.2, 0, 0.1) },
-      uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 }, uTime: { value: 0 }, uU: { value: 1 }, uNear: { value: 0.05 }, uFar: { value: 200 }, uOrtho: { value: 0 }, uSteps: { value: 40 }, uStepMax: { value: 0.012 }, uDepthOn: { value: 0 },
+      uMulti: { value: 0 }, uOpacity: { value: 1 }, uGain: { value: 1 }, uTime: { value: 0 }, uU: { value: 1 }, uNear: { value: 0.05 }, uFar: { value: 200 }, uOrtho: { value: 0 }, uSteps: { value: 40 }, uDepthTap: { value: 1 }, uStepMax: { value: 0.012 }, uDepthOn: { value: 0 },
     },
   });
   // adjustable (multipliers / overrides): ?smokeSpread=&smokeWisp=&smokeSteps= or ctx.smoke.cfg at runtime;
@@ -280,7 +286,8 @@ export function init(ctx) {
     const target = renderer.getRenderTarget();
     if (target) sz2.set(target.width, target.height); else renderer.getDrawingBufferSize(sz2);
     u.uRes.value.copy(sz2);
-    const w = Math.max(1, Math.round(sz2.x * 0.5)), hgt = Math.max(1, Math.round(sz2.y * 0.5));
+    const dsc = state.get().tier === 'high' ? 1 : 0.5; u.uDepthTap.value = dsc < 1 ? 1 : 0;
+    const w = Math.max(1, Math.round(sz2.x * dsc)), hgt = Math.max(1, Math.round(sz2.y * dsc));
     if (!depthRT) { depthRT = new THREE.WebGLRenderTarget(w, hgt, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true }); }
     else if (depthRT.width !== w || depthRT.height !== hgt) depthRT.setSize(w, hgt);
     // re-draw only when the view changed (or every 6th frame for spinning rotors / the model sliding in)
