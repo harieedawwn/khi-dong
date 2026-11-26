@@ -17,7 +17,7 @@ Files: src/styles.css, src/ui/shell.js, src/ui/readouts.js, src/ui/builder.js, s
 5. Sửa `.seg` trong builder: nút chưa chọn ("Có" ở Bánh xe) đang gần như vô hình — chữ phải đủ tương phản trên nền sáng.
 Done when: build ok; ảnh 1920×1080 và 360×780: tên trường 1 dòng, không HUD nổi, panel trái gọn; không tràn ở 360px.
 
-## [ ] P2 — Ống ngắn lại, bỏ khung thép, khung kính sạch (Sonnet 5.5 · medium)
+## [x] P2 — Ống ngắn lại, bỏ khung thép, khung kính sạch (Sonnet 5.5 · medium)
 Files: src/render/scene.js (+ preset camera nếu có, grep "camera"/"fit"). Không đổi X0/X1/YH/ZH (vùng thử = miền bộ giải).
 1. Rút ngắn hai đầu, vẫn đọc ra là ống thu hẹp + ống loe: `CX0 -6.4 → -4.7`, `CZ0 2.0 → 1.8`, `CY0 1.45 → 1.3`; `DX1 5.4 → 4.5`, `HX1 6.3 → 5.1`. Kiểm tra các vật bám theo CX0/DX1/HX1 (screenPlane lưới tổ ong ở CX0+…, vành mặt bích, quạt, csec) vẫn nằm đúng, lưới thứ tư (CX0+1.1) vẫn trong ống thu. Camera tổng quan/khung vừa phải ôm sát ống mới (không chừa khoảng trống thừa).
 2. Bỏ toàn bộ sườn thép quanh vùng thử: vòng `RIB_X` (thanh trên/dưới/hông, mặt bích, bu lông) và 4 thanh dọc "long rails". Thay bằng: 2 vành mỏng tối (dày 0.03, màu 0x3A4048) ôm mép kính tại x = X0 và X1 nơi nối với ống thu/ống loe; mép kính dọc 4 cạnh là nẹp rất mảnh (0.015) màu tối, nhám. Giữ chân đỡ + dầm dưới sàn + hộp cân lực (nằm dưới, không che).

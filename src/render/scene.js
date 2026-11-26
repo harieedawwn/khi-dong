@@ -150,35 +150,14 @@ export function createScene(opts = {}) {
 
   /* ---------------------------------------------- steel frame (one draw call) */
   const FRAME = 0x6A727C, FLANGE = 0x8A929B, LEG = 0x474E56, DARK = 0x2B2F35;
-  const BY = YH + 0.07, BZ = ZH + 0.07;                     // outer rib extents
-  const RIB_X = [-3, -2, -1, 1, 2, 3];                      // no rib at 0: keeps the model visible from above
-  for (const x of RIB_X) {
-    box(0.07, 0.07, 2 * BZ, x, YH + 0.035 + 0.004, 0, FRAME);                      // top bar
-    box(0.07, 0.07, 2 * BZ, x, FLOOR_Y - 0.062 - 0.035, 0, FRAME);                 // bottom bar (under floor)
-    const sideH = (YH + 0.07) - (FLOOR_Y - 0.062 - 0.07) ;
-    const sideY = (YH + 0.07 + FLOOR_Y - 0.062 - 0.07) / 2;
-    for (const s of [-1, 1]) box(0.07, sideH, 0.07, x, sideY, s * (ZH + 0.035 + 0.004), FRAME); // side bars
-    // flanges on both faces + bolts
-    for (const s of [-1, 1]) {
-      const fx = x + s * 0.045;
-      box(0.02, 0.05, 2 * BZ + 0.1, fx, YH + 0.035 + 0.004, 0, FLANGE, 0.004);
-      box(0.02, 0.05, 2 * BZ + 0.1, fx, FLOOR_Y - 0.062 - 0.035, 0, FLANGE, 0.004);
-      for (const t of [-1, 1]) box(0.02, sideH, 0.05, fx, sideY, t * (ZH + 0.035 + 0.004), FLANGE, 0.004);
-      for (let k = -3; k <= 3; k++) {
-        const bz = k * 0.38;
-        bolt(fx + s * 0.012, YH + 0.039, bz, 'x'); bolt(fx + s * 0.012, FLOOR_Y - 0.097, bz, 'x');
-      }
-      for (let k = 0; k < 4; k++) {
-        const by = sideY - sideH / 2 + 0.14 + k * (sideH - 0.28) / 3;
-        for (const t of [-1, 1]) bolt(fx + s * 0.012, by, t * (ZH + 0.039), 'x');
-      }
-    }
+  // thin dark rims at the glass ends (x = X0, X1) and slim dark trim along the 4 glass edges; no ribs inside the test region
+  const TRIM = 0x3A4048, TH = 0.03;
+  for (const x of [X0, X1]) {
+    box(TH, TH, 2 * ZH + 2 * TH, x, YH + TH / 2, 0, TRIM, 0.004);
+    box(TH, TH, 2 * ZH + 2 * TH, x, FLOOR_Y - TH / 2, 0, TRIM, 0.004);
+    for (const s of [-1, 1]) box(TH, 2 * YH, TH, x, 0, s * (ZH + TH / 2), TRIM, 0.004);
   }
-  // long rails beside the glass corners (outside the glass, no overlap with it)
-  for (const sy of [1, -1]) for (const sz of [-1, 1]) {
-    const y = sy > 0 ? YH + 0.03 + 0.004 : FLOOR_Y - 0.062 - 0.035;
-    box(6 + 0.02, 0.05, 0.05, 0, y, sz * (ZH + 0.03 + 0.004), FRAME, 0.005);
-  }
+  for (const sy of [1, -1]) for (const sz of [-1, 1]) box(X1 - X0, 0.015, 0.015, 0, sy * YH, sz * ZH, TRIM, 0.002);
   // under-floor beams, legs, feet, cross members
   for (const sz of [-1, 1]) box(6.1, 0.08, 0.1, 0, FLOOR_Y - 0.062 - 0.075, sz * (ZH + 0.02), LEG);
   for (const lx of [-1.6, 1.6]) for (const sz of [-1, 1]) {
@@ -246,10 +225,10 @@ export function createScene(opts = {}) {
     g.setIndex(idx); g.computeVertexNormals();
     return g;
   }
-  const CX0 = -6.4, CZ0 = 2.0, CY0 = 1.45;
+  const CX0 = -4.7, CZ0 = 1.8, CY0 = 1.3;
   const sm = (t) => t * t * (3 - 2 * t);
   const contraction = loft(CX0, X0, 12, (t, s) => { const e = sm(t); s.zz = CZ0 + (ZH - CZ0) * e; s.yy = CY0 + (YH - CY0) * e; s.c = 0; });
-  const R_F = 1.15, DX1 = 5.4, HX1 = 6.3;
+  const R_F = 1.15, DX1 = 4.5, HX1 = 5.1;
   const dif = loft(X1, DX1, 12, (t, s) => { const e = sm(t); s.zz = ZH + (R_F - ZH) * e; s.yy = YH + (R_F - YH) * e; s.c = e; s.R = R_F; });
   const housing = loft(DX1, HX1, 2, (t, s) => { s.zz = R_F; s.yy = R_F; s.c = 1; s.R = R_F; });
   const duct = new THREE.Mesh(mergeGeometries([contraction], false, 'contraction'),
@@ -296,7 +275,7 @@ export function createScene(opts = {}) {
   screenPlane(CX0 + 1.1, meshTex, 50, 50, 0xFFFFFF);
 
   /* ------------------------------------------------------- fan + nacelle */
-  const fan = new THREE.Group(); fan.position.set(5.75, 0, 0);
+  const fan = new THREE.Group(); fan.position.set(4.65, 0, 0);
   {
     const parts = [];
     const hub = new THREE.CylinderGeometry(0.17, 0.2, 0.34, 16); hub.rotateZ(Math.PI / 2); paint(hub, 0x444B53); parts.push(hub);
@@ -307,31 +286,30 @@ export function createScene(opts = {}) {
     for (const g of parts) { if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); }
     const fm = new THREE.Mesh(mergeGeometries(parts, false, 'fan'), new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.5, roughness: 0.45, side: THREE.DoubleSide }));
     fan.add(fm);
-    const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.8, 16).rotateZ(Math.PI / 2).translate(0.55, 0, 0),
+    const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.5, 16).rotateZ(Math.PI / 2).translate(0.3, 0, 0),
       new THREE.MeshStandardMaterial({ color: 0x4A525B, metalness: 0.5, roughness: 0.45 }));
-    scene.add(nac); nac.position.x = 5.75;
+    scene.add(nac); nac.position.x = 4.65;
     for (const a of [0, 1, 2, 3]) { // stator struts
       const s = new THREE.Mesh(new THREE.BoxGeometry(0.03, R_F, 0.03).translate(0, R_F / 2, 0), steelMat.clone());
       s.material.vertexColors = false; s.material.color.set(0x4A525B);
-      s.rotation.x = a * Math.PI / 2; s.position.set(6.1, 0, 0); scene.add(s);
+      s.rotation.x = a * Math.PI / 2; s.position.set(4.95, 0, 0); scene.add(s);
     }
   }
   scene.add(fan);
 
   /* ----------------------------------------------------- glass test section */
-  const glassMeshes = []; let tunnelOn = true;
+  const glassMeshes = []; let tunnelOn = true, glassFront = null;
   {
     const bg = new THREE.BoxGeometry(X1 - X0, 2 * YH, 2 * ZH);
     const full = bg.index.array, keep = [];               // faces: px nx py ny pz nz (6 indices each); keep roof + both walls
     for (const f of [2, 4, 5]) for (let i = 0; i < 6; i++) keep.push(full[f * 6 + i]);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', bg.attributes.position); g.setAttribute('normal', bg.attributes.normal); g.setIndex(keep);
-    const mk = (side, op) => new THREE.MeshStandardMaterial({ color: 0xBFD8E2, metalness: 0, roughness: 0.06, transparent: true, opacity: op, side, depthWrite: false });
-    const back = new THREE.Mesh(g, mk(THREE.BackSide, 0.07)); back.renderOrder = 1;
-    const front = new THREE.Mesh(g, mk(THREE.FrontSide, 0.045)); front.renderOrder = 6;
+    const mk = (side, op) => new THREE.MeshStandardMaterial({ color: 0xC8DCE4, metalness: 0, roughness: 0.15, envMapIntensity: 0.2, transparent: true, opacity: op, side, depthWrite: false });
+    const back = new THREE.Mesh(g, mk(THREE.BackSide, 0.04)); back.renderOrder = 1;
+    const front = new THREE.Mesh(g, mk(THREE.FrontSide, 0.03)); front.renderOrder = 6;
     scene.add(back, front); glassMeshes.push(back, front);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(bg), new THREE.LineBasicMaterial({ color: 0xE6F0F4, transparent: true, opacity: 0.8, depthWrite: false }));
-    edges.renderOrder = 7; scene.add(edges);
+    glassFront = front;
   }
 
   /* ------------------------------------------------------------- floors */
@@ -545,6 +523,7 @@ export function createScene(opts = {}) {
     try {
       fan.rotation.x += Math.min(fanVis * 3, 12) * dt;
       stepCamera(dt);
+    if (glassFront) { const dz = Math.abs(camera.position.z - controls.target.z) / Math.max(0.01, camera.position.distanceTo(controls.target)); glassFront.material.opacity = 0.03 * (1 - 0.8 * Math.min(1, dz * dz)); }
       if (aaRT) {
         renderer.setRenderTarget(aaRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
         blitMat.uniforms.tMap.value = aaRT.texture; const ac = renderer.autoClear; renderer.autoClear = false; renderer.render(blitScene, blitCam); renderer.autoClear = ac;
